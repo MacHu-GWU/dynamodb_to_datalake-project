@@ -1,0 +1,96 @@
+# -*- coding: utf-8 -*-
+
+import typing as T
+
+import polars as pl
+from rich import print as rprint
+
+from .config import DATABASE, TABLE
+from .boto_ses import bsm
+from .dynamodb_table import Transaction
+from .athena import run_athena_query
+
+
+def read_from_dynamodb() -> T.List[T.Dict[str, T.Any]]:
+    rows = list()
+    for transaction in Transaction.scan(
+        # limit=10,
+    ):
+        account = transaction.attribute_values["account"]
+        create_at_datetime = transaction.attribute_values["create_at"]
+        update_at_datetime = transaction.attribute_values["update_at"]
+        entity = transaction.attribute_values["entity"]
+        amount = transaction.attribute_values["amount"]
+        is_credit = transaction.attribute_values["is_credit"]
+        note = transaction.attribute_values["note"]
+
+        create_at = create_at_datetime.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
+        update_at = update_at_datetime.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
+        create_year = create_at_datetime.year
+        create_month = create_at_datetime.month
+        create_day = create_at_datetime.day
+        create_hour = create_at_datetime.hour
+        create_minute = create_at_datetime.minute
+
+        # if create_at != update_at:
+        #     rprint(row)
+
+        row = dict(
+            id=f"account:{account},create_at:{create_at}",
+            account=account,
+            create_at=create_at,
+            create_year=create_year,
+            create_month=create_month,
+            create_day=create_day,
+            create_hour=create_hour,
+            create_minute=create_minute,
+            update_at=update_at,
+            entity=entity,
+            amount=amount,
+            is_credit=is_credit,
+            note=note,
+        )
+        rows.append(row)
+
+    df = pl.DataFrame(rows)
+    df = df.sort("id")
+    records = df.to_dicts()
+    # rprint(records[:3])
+    print(f"dynamodb table shape: {df.shape}")
+    return records
+
+
+def read_from_hudi() -> T.List[T.Dict[str, T.Any]]:
+    df = run_athena_query(
+        database=DATABASE,
+        sql=f"SELECT * FROM {DATABASE}.{TABLE}",
+    )
+    df = df.drop(
+        [
+            "_hoodie_commit_time",
+            "_hoodie_commit_seqno",
+            "_hoodie_record_key",
+            "_hoodie_partition_path",
+            "_hoodie_file_name",
+        ]
+    )
+
+    df = df.sort("id")
+    records = df.to_dicts()
+    # rprint(records[:3])
+    print(f"hudi table shape: {df.shape}")
+    return records
+
+
+def compare():
+    records1 = read_from_dynamodb()
+    records2 = read_from_hudi()
+    for record1, record2 in zip(records1, records2):
+        if record1 != record2:
+            print("-" * 80)
+            rprint(record1)
+            rprint(record2)
+            for key, value1 in record1.items():
+                value2 = record2[key]
+                if value1 != value2:
+                    print(f"{key}: {value1} != {value2}")
