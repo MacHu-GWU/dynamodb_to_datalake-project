@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+"""
+local file paths enumeration.
+"""
+
 from pathlib_mate import Path
 
 # git repo root directory

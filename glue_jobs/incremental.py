@@ -38,6 +38,7 @@ args = getResolvedOptions(
         "S3URI_TABLE",
         "DATABASE_NAME",
         "TABLE_NAME",
+        "WRITE_MODE",
     ]
 )
 job = Job(glue_ctx)
@@ -68,6 +69,7 @@ response = s3_client.get_object(
 )
 input_data = json.loads(response["Body"].read().decode("utf-8"))
 s3uri_list = input_data["s3uri_list"]
+write_mode = input_data["write_mode"]
 
 pdf_incremental = glue_ctx.create_dynamic_frame.from_options(
     connection_type="s3",
@@ -166,7 +168,7 @@ additional_options = {
 (
     pdf_incremental_3.write.format("hudi")
     .options(**additional_options)
-    .mode("append")
+    .mode(write_mode)
     .save()
 )
 

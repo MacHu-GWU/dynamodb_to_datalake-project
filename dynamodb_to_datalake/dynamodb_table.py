@@ -3,7 +3,7 @@
 import time
 import pynamodb_mate as pm
 
-from .config import DYNAMODB_TABLE
+from .conifg_init import config
 from .boto_ses import bsm
 
 
@@ -13,8 +13,8 @@ class Transaction(pm.Model):
     """
 
     class Meta:
-        table_name = DYNAMODB_TABLE
-        region = bsm.aws_region
+        table_name = config.dynamodb_table
+        region = config.aws_region
         billing_mode = pm.PAY_PER_REQUEST_BILLING_MODE
 
     account = pm.UnicodeAttribute(hash_key=True)
@@ -26,44 +26,55 @@ class Transaction(pm.Model):
     note = pm.UnicodeAttribute(null=True)
 
 
-DYNAMODB_TABLE_ARN = (
-    f"arn:aws:dynamodb:{bsm.aws_region}:{bsm.aws_account_id}:table/{DYNAMODB_TABLE}"
-)
+def get_dynamodb_table_console_url(
+    aws_region: str,
+    table: str,
+) -> str:
+    return (
+        f"https://{aws_region}.console.aws.amazon.com"
+        f"/dynamodbv2/home?region={aws_region}#table?name={table}"
+    )
 
 
 def create_dynamodb_table():
-    print(f"create DynamoDB table {DYNAMODB_TABLE!r}")
     with bsm.awscli():
         Transaction.create_table(wait=True)
 
-    # ref: update_continuous_backups
-    print("enable point in time recovery")
+
+def enable_point_in_time_recovery():
+    # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/update_continuous_backups.html
     bsm.dynamodb_client.update_continuous_backups(
-        TableName=DYNAMODB_TABLE,
+        TableName=config.dynamodb_table,
         PointInTimeRecoverySpecification=dict(
             PointInTimeRecoveryEnabled=True,
         ),
     )
-    time.sleep(5)
 
+
+def enable_dynamodb_stream():
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/update_table.html
-    print("enable dynamodb stream")
-    bsm.dynamodb_client.update_table(
-        TableName=DYNAMODB_TABLE,
-        StreamSpecification=dict(
-            StreamEnabled=True,
-            StreamViewType="NEW_AND_OLD_IMAGES",
-        ),
-    )
-
-    console_url = (
-        f"https://{bsm.aws_region}.console.aws.amazon.com"
-        f"/dynamodbv2/home?region={bsm.aws_region}#table?name={DYNAMODB_TABLE}"
-    )
-    print(f"preview at: {console_url}")
+    try:
+        bsm.dynamodb_client.update_table(
+            TableName=config.dynamodb_table,
+            StreamSpecification=dict(
+                StreamEnabled=True,
+                StreamViewType="NEW_AND_OLD_IMAGES",
+            ),
+        )
+    except Exception as e:
+        if "Table already has an enabled stream" in str(e):
+            pass
+        else:
+            raise e
 
 
 def delete_dynamodb_table():
-    print(f"delete DynamoDB table {DYNAMODB_TABLE!r}")
     with bsm.awscli():
-        Transaction.delete_table()
+        try:
+            Transaction.delete_table()
+        except Exception as e:
+            if "not found" in str(e).lower():
+                pass
+            else:
+                raise NotImplementedError
+

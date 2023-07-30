@@ -2,17 +2,12 @@
 
 import typing as T
 import json
+import dataclasses
 from datetime import datetime, timedelta, timezone
 
 from pathlib_mate import Path
 
-from .config import (
-    APP_NAME,
-    GLUE_ROLE_NAME,
-    DATABASE,
-    TABLE,
-    DYNAMODB_INITIAL_LOAD_EXPORT_ARN,
-)
+from .conifg_init import config
 from .boto_ses import bsm
 from .s3paths import (
     s3dir_glue_artifacts,
@@ -28,25 +23,63 @@ from .paths import (
 )
 from .dynamodb_export import get_last_dynamodb_export
 
-glue_role_arn = f"arn:aws:iam::{bsm.aws_account_id}:role/{GLUE_ROLE_NAME}"
-glue_job_name_initial_load = f"{APP_NAME}_initial_load"
-glue_job_name_incremental = f"{APP_NAME}_incremental"
+# glue_role_arn = f"arn:aws:iam::{bsm.aws_account_id}:role/{GLUE_ROLE_NAME}"
+# glue_job_name_initial_load = f"{APP_NAME}_initial_load"
+# glue_job_name_incremental = f"{APP_NAME}_incremental"
 
 
-def delete_glue_job_if_exists(job_name: str):
+def get_glue_job_console_url(
+    aws_region: str,
+    job_name: str,
+) -> str:
+    return (
+        f"https://{aws_region}.console.aws.amazon.com/gluestudio"
+        f"/home?region={aws_region}#/editor/job/{job_name}/script"
+    )
+
+
+def get_glue_job(
+    glue_client,
+    job_name: str,
+) -> T.Optional[dict]:
+    # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/glue/client/batch_get_jobs.html
+    res = glue_client.batch_get_jobs(
+        JobNames=[job_name],
+    )
+    if job_name in res.get("JobsNotFound", []):
+        return None
+    else:
+        return res["Jobs"][0]
+
+
+def delete_glue_job(
+    glue_client,
+    job_name: str,
+):
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/glue/client/delete_job.html
-    bsm.glue_client.delete_job(
+    glue_client.delete_job(
         JobName=job_name,
     )
 
 
-def create_glue_job(
+def delete_glue_job_if_exists(
+    glue_client,
+    job_name: str,
+):
+    job_detail = get_glue_job(glue_client, job_name)
+    if job_detail is not None:
+        delete_glue_job(glue_client, job_name)
+
+
+def create_hudi_glue_job(
+    glue_client,
     job_name: str,
     job_script: Path,
+    glue_role_arn: str,
     additional_params: T.Optional[T.Dict[str, str]] = None,
 ):
     # ensure glue job is deleted first
-    delete_glue_job_if_exists(job_name)
+    delete_glue_job_if_exists(glue_client, job_name)
 
     # upload glue job script to s3
     s3path_artifact = s3dir_glue_artifacts.joinpath(job_script.basename)
@@ -54,30 +87,32 @@ def create_glue_job(
         job_script.read_text(),
         content_type="text/plain",
     )
-    console_url = (
-        f"https://{bsm.aws_region}.console.aws.amazon.com/gluestudio"
-        f"/home?region={bsm.aws_region}#/editor/job/{job_name}/script"
-    )
-    print(f"create glue job {job_name!r} from {s3path_artifact.uri}")
-    print(f"preview etl script at: {s3path_artifact.console_url}")
-    print(f"preview glue job at: {console_url}")
+    # console_url = (
+    #     f"https://{bsm.aws_region}.console.aws.amazon.com/gluestudio"
+    #     f"/home?region={bsm.aws_region}#/editor/job/{job_name}/script"
+    # )
+    # print(f"create glue job {job_name!r} from {s3path_artifact.uri}")
+    # print(f"preview etl script at: {s3path_artifact.console_url}")
+    # print(f"preview glue job at: {console_url}")
 
+    # create glue job
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/glue/client/create_job.html
     if additional_params is None:
         additional_params = {}
+
     # necessary job parameters to use hudi
     default_arguments = {
         "--datalake-formats": "hudi",
         "--conf": "spark.serializer=org.apache.spark.serializer.KryoSerializer --conf spark.sql.hive.convertMetastoreParquet=false",
         "--enable-metrics": "true",
         "--enable-spark-ui": "true",
-        "--spark-event-logs-path": f"s3://aws-glue-assets-{bsm.aws_account_id}-{bsm.aws_region}/sparkHistoryLogs/",
         "--enable-job-insights": "false",
         "--enable-glue-datacatalog": "true",
         "--enable-continuous-cloudwatch-log": "true",
         "--job-bookmark-option": "job-bookmark-disable",
         "--job-language": "python",
-        "--TempDir": f"s3://aws-glue-assets-{bsm.aws_account_id}-{bsm.aws_region}/temporary/",
+        "--spark-event-logs-path": f"s3://{config.s3_bucket_glue_assets}/sparkHistoryLogs/",
+        "--TempDir": f"s3://{config.s3_bucket_glue_assets}/temporary/",
     }
     default_arguments.update(additional_params)
     bsm.glue_client.create_job(
@@ -99,40 +134,78 @@ def create_glue_job(
 
 
 def create_initial_load_glue_job():
-    create_glue_job(
-        job_name=glue_job_name_initial_load,
+    create_hudi_glue_job(
+        glue_client=bsm.glue_client,
+        job_name=config.glue_job_name_initial_load,
         job_script=path_glue_script_initial_load,
+        glue_role_arn=config.glue_role_arn,
         additional_params={
             "--S3URI_DYNAMODB_EXPORT_PROCESSED": s3dir_dynamodb_export_processed.uri,
             "--S3URI_TABLE": s3dir_table.uri,
-            "--DATABASE_NAME": DATABASE,
-            "--TABLE_NAME": TABLE,
+            "--DATABASE_NAME": config.glue_database,
+            "--TABLE_NAME": config.glue_table,
         },
     )
 
 
 def create_incremental_glue_job():
-    create_glue_job(
-        job_name=glue_job_name_incremental,
+    create_hudi_glue_job(
+        glue_client=bsm.glue_client,
+        job_name=config.glue_job_name_incremental,
         job_script=path_glue_script_incremental,
+        glue_role_arn=config.glue_role_arn,
         additional_params={
             "--S3URI_INCREMENTAL_GLUE_JOB_INPUT": s3path_incremental_glue_job_input.uri,
             "--S3URI_INCREMENTAL_GLUE_JOB_TRACKER": s3path_incremental_glue_job_tracker.uri,
             "--S3URI_TABLE": s3dir_table.uri,
-            "--DATABASE_NAME": DATABASE,
-            "--TABLE_NAME": TABLE,
+            "--DATABASE_NAME": config.glue_database,
+            "--TABLE_NAME": config.glue_table,
         },
     )
 
 
 def run_initial_load_glue_job():
     bsm.glue_client.start_job_run(
-        JobName=glue_job_name_initial_load,
+        JobName=config.glue_job_name_initial_load,
     )
 
 
+
+# @dataclasses.dataclass
+# class Tracker:
+#     @classmethod
+#     def read(cls):
+#         s3path_incremental_glue_job_tracker.exists() is False:
+#         s3path_incremental_glue_job_tracker.write_text(
+#             epoch_start_time.strftime("%Y-%m-%d-%H-%M"),
+#             content_type="text/plain",
+#         )
+
+
 def run_incremental_glue_job():
+    # ensure there is no running incremental glue job
     print("run incremental glue job")
+    paginator = bsm.glue_client.get_paginator("get_job_runs")
+    response_iterator = paginator.paginate(
+        JobName=glue_job_name_incremental,
+        PaginationConfig={
+            "MaxItems": 10,
+            "PageSize": 50,
+        }
+    )
+    job_runs = list()
+    for response in response_iterator:
+        job_runs.extend(response.get("JobRuns", []))
+
+    if len(job_runs) > 0:
+        state = job_runs[0]["JobRunState"]
+        if state in ["STOPPED", "STOPPED", "FAILED", "TIMEOUT", "ERROR"]:
+            pass
+        elif state in ["STARTING", "RUNNING", "STOPPING", "WAITING"]:
+            print("there is a running incremental glue job, do nothing")
+            return
+
+    # figure out the incremental data start time if it is the first time to run
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/describe_export.html
     response = bsm.dynamodb_client.describe_export(
         ExportArn=DYNAMODB_INITIAL_LOAD_EXPORT_ARN,
@@ -162,6 +235,10 @@ def run_incremental_glue_job():
         if start_at < s3dir.basename.split("=", 1)[1] <= end_at:
             for s3path in s3dir.iter_objects():
                 todo_s3path_list.append(s3path)
+
+    if len(todo_s3path_list) == 0:
+        print("no incremental data to process, do nothing.")
+        return
 
     input_data = {
         "s3uri_list": [

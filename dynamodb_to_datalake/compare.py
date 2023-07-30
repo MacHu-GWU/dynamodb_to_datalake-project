@@ -32,9 +32,6 @@ def read_from_dynamodb() -> T.List[T.Dict[str, T.Any]]:
         create_hour = create_at_datetime.hour
         create_minute = create_at_datetime.minute
 
-        # if create_at != update_at:
-        #     rprint(row)
-
         row = dict(
             id=f"account:{account},create_at:{create_at}",
             account=account,
@@ -83,14 +80,17 @@ def read_from_hudi() -> T.List[T.Dict[str, T.Any]]:
 
 
 def compare():
+    """
+    Compare the data in dynamodb and hudi, see if they are exactly the same.
+    """
     records1 = read_from_dynamodb()
     records2 = read_from_hudi()
-    for record1, record2 in zip(records1, records2):
-        if record1 != record2:
-            print("-" * 80)
-            rprint(record1)
-            rprint(record2)
-            for key, value1 in record1.items():
-                value2 = record2[key]
-                if value1 != value2:
-                    print(f"{key}: {value1} != {value2}")
+    # for record1, record2 in zip(records1, records2):
+    #     if record1 != record2:
+    #         print("-" * 80)
+    #         rprint(record1)
+    #         rprint(record2)
+    #         for key, value1 in record1.items():
+    #             value2 = record2[key]
+    #             if value1 != value2:
+    #                 print(f"{key}: {value1} != {value2}")

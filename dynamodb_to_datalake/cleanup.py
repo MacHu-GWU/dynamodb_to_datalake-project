@@ -4,6 +4,7 @@ from .boto_ses import bsm
 from .config import DATABASE, TABLE
 from .s3paths import s3dir_artifacts, s3dir_data
 from .dynamodb_table import delete_dynamodb_table
+from .glue_job import delete_glue_job_if_exists
 
 
 def cleanup():

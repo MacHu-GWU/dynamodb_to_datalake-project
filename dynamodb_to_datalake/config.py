@@ -1,26 +1,83 @@
 # -*- coding: utf-8 -*-
 
-# AWS cli profile for this project
-AWS_PROFILE = "awshsh_app_dev_us_east_1"
+"""
+Project level configuration.
+"""
 
-# app name, common prefix for all resources
-APP_NAME = "dynamodb_to_datalake"
+import dataclasses
+from boto_session_manager import BotoSesManager
 
-# dynamodb table name
-DYNAMODB_TABLE = "transaction"
+from .compat import cached_property
 
-# glue catalog database name
-DATABASE = "dynamodb_to_datalake"
 
-# glue catalog table name
-TABLE = "transaction"
+@dataclasses.dataclass
+class Config:
+    """
+    :param app_name: app name, common prefix for all resources
+    :param aws_profile: AWS cli profile for this project
+    :param dynamodb_table: dynamodb table name
+    :param glue_database: glue catalog database name
+    :param glue_table: glue catalog table name
+    :param lambda_role_name: AWS Lambda Function IAM role name (name only)
+    :param glue_role_name: AWS Glue Job IAM role name (name only)
+    """
 
-# AWS Lambda Function IAM role name (name only)
-LAMBDA_ROLE_NAME = "all-services-admin-role"
+    app_name: str
+    aws_profile: str
+    dynamodb_table: str
+    glue_database: str
+    glue_table: str
+    lambda_role_name: str
+    glue_role_name: str
 
-# AWS Glue Job IAM role name (name only)
-GLUE_ROLE_NAME = "all-services-admin-role"
+    @cached_property
+    def bsm(self) -> BotoSesManager:
+        return BotoSesManager(profile_name=self.aws_profile)
 
-#
-# last dynamodb stream partition update_at=2023-07-29-05-40
-DYNAMODB_INITIAL_LOAD_EXPORT_ARN = "arn:aws:dynamodb:us-east-1:807388292768:table/transaction/export/01690609366022-e7facaf3"
+    @cached_property
+    def aws_account_id(self) -> str:
+        return self.bsm.aws_account_id
+
+    @cached_property
+    def aws_region(self) -> str:
+        return self.bsm.aws_region
+
+    @property
+    def dynamodb_table_arn(self) -> str:
+        return f"arn:aws:dynamodb:{self.aws_region}:{self.aws_account_id}:table/{self.dynamodb_table}"
+
+    @property
+    def lambda_role_arn(self) -> str:
+        return f"arn:aws:iam::{self.aws_account_id}:role/{self.lambda_role_name}"
+
+    @property
+    def glue_role_arn(self) -> str:
+        return f"arn:aws:iam::{self.aws_account_id}:role/{self.glue_role_name}"
+
+    @property
+    def lambda_function_name_dynamodb_stream_consumer(self) -> str:
+        return f"{self.app_name}_dynamodb_stream_consumer"
+
+    @property
+    def lambda_function_name_glue_job_coordinator(self) -> str:
+        return f"{self.app_name}_glue_job_coordinator"
+
+    @property
+    def glue_job_name_initial_load(self) -> str:
+        return f"{self.app_name}_initial_load"
+
+    @property
+    def glue_job_name_incremental(self) -> str:
+        return f"{self.app_name}_incremental"
+
+    @property
+    def s3_bucket_artifacts(self) -> str:
+        return f"{self.aws_account_id}-{self.aws_region}-artifacts"
+
+    @property
+    def s3_bucket_data(self) -> str:
+        return f"{self.aws_account_id}-{self.aws_region}-data"
+
+    @property
+    def s3_bucket_glue_assets(self) -> str:
+        return f"aws-glue-assets-{self.aws_account_id}-{self.aws_region}"

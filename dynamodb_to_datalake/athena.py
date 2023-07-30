@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 
+"""
+Athena related functions.
+"""
+
 import polars as pl
 
-from .config import DATABASE, TABLE
+from .conifg_init import config
 from .boto_ses import bsm
 from .s3paths import s3dir_athena_result
 from .paths import path_query_result
@@ -13,6 +17,9 @@ def run_athena_query(
     database: str,
     sql: str,
 ) -> pl.DataFrame:
+    """
+    Run athena query and get the result as a polars.DataFrame.
+    """
     print(f"run_athena_query:")
     print(sql)
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/athena/client/start_query_execution.html
@@ -55,17 +62,20 @@ def run_athena_query(
 def preview_hudi_table(
     limit: int = 10,
 ):
-    print(f"preview hudi table '{DATABASE}.{TABLE}'")
+    """
+    Preview the Dynamodb equavilent Hudi table via Athena.
+    """
+    print(f"preview hudi table '{config.glue_database}.{config.glue_table}'")
     df = run_athena_query(
-        database=DATABASE,
-        sql=f"SELECT * FROM {TABLE} LIMIT {limit}",
+        database=config.glue_database,
+        sql=f"SELECT * FROM {config.glue_table} LIMIT {limit}",
     )
     df.write_csv(str(path_query_result), has_header=True)
     print(f"preview data: file://{path_query_result}")
 
     df = run_athena_query(
-        database=DATABASE,
-        sql=f"SELECT COUNT(*) as n_rows FROM {TABLE}",
+        database=config.glue_database,
+        sql=f"SELECT COUNT(*) as n_rows FROM {config.glue_table}",
     )
     n_rows = df.to_dicts()[0]["n_rows"]
     print(f"n_rows = {n_rows}")

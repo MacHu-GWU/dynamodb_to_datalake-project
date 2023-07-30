@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from boto_session_manager import BotoSesManager
 from s3pathlib import context
 
-from .config import AWS_PROFILE
+from .conifg_init import config
 
-bsm = BotoSesManager(profile_name=AWS_PROFILE)
+bsm = config.bsm
 context.attach_boto_session(bsm.boto_ses)

@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 
+"""
+Lambda function related functions.
+"""
+
+import typing as T
 from aws_lambda_layer.api import publish_source_artifacts
 
-from .config import APP_NAME, LAMBDA_ROLE_NAME
+from .conifg_init import config
 from .boto_ses import bsm
 from .paths import (
     dir_project_root,
@@ -14,32 +19,65 @@ from .s3paths import (
     s3dir_dynamodb_stream,
 )
 
-lambda_role_arn = f"arn:aws:iam::{bsm.aws_account_id}:role/{LAMBDA_ROLE_NAME}"
+
+def get_lambda_function_console_url(
+    aws_region: str,
+    function_name: str,
+) -> str:
+    return (
+        f"https://{aws_region}.console.aws.amazon.com"
+        f"/lambda/home?region={aws_region}#/functions"
+        f"/{function_name}?tab=code"
+    )
+
+
+def get_lambda_function(
+    lambda_client,
+    function_name: str,
+) -> T.Optional[dict]:
+    # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/lambda/client/get_function.html
+    try:
+        response = lambda_client.get_function(
+            FunctionName=function_name,
+        )
+        return response["Configuration"]
+    except Exception as e:
+        if "not found" in str(e).lower():
+            return None
+        else:
+            raise NotImplementedError
+
+
+def delete_function(
+    lambda_client,
+    function_name: str,
+):
+    # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/lambda/client/delete_function.html
+    lambda_client.delete_function(
+        FunctionName=function_name,
+    )
+
+
+def delete_function_if_exists(
+    lambda_client,
+    function_name: str,
+):
+    if get_lambda_function(lambda_client, function_name) is not None:
+        delete_function(lambda_client, function_name)
 
 
 def create_dynamodb_stream_consumer_lambda_function():
-    function_name = f"{APP_NAME}_dynamodb_stream_consumer"
+    function_name = config.lambda_function_name_dynamodb_stream_consumer
     print(f"create Dynamodb stream consumer lambda function: {function_name!r}")
-    console_url = (
-        f"https://{bsm.aws_region}.console.aws.amazon.com"
-        f"/lambda/home?region={bsm.aws_region}#/functions"
-        f"/{function_name}?tab=code"
+    console_url = get_lambda_function_console_url(
+        aws_region=config.aws_region,
+        function_name=function_name,
     )
     print(f"preview at: {console_url}")
-    # delete first
-    # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/lambda/client/get_function.html
-    try:
-        bsm.lambda_client.get_function(
-            FunctionName=function_name,
-        )
-        bsm.lambda_client.delete_function(
-            FunctionName=function_name,
-        )
-    except Exception as e:
-        if "Function not found" in str(e):
-            pass
-        else:
-            raise NotImplementedError
+    delete_function_if_exists(
+        lambda_client=bsm.lambda_client,
+        function_name=function_name,
+    )
 
     # then create
     source_artifacts_deployment = publish_source_artifacts(
@@ -53,11 +91,12 @@ def create_dynamodb_stream_consumer_lambda_function():
         use_pathlib=True,
         verbose=True,
     )
+
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/lambda/client/create_function.html
     bsm.lambda_client.create_function(
         FunctionName=function_name,
         Runtime="python3.10",
-        Role=lambda_role_arn,
+        Role=config.lambda_role_arn,
         Handler=f"{path_lbd_func_dynamodb_stream_consumer.fname}.lambda_handler",
         Code=dict(
             S3Bucket=source_artifacts_deployment.s3path_source_zip.bucket,

@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 
+"""
+Dynamodb export related functions.
+"""
+
 import typing as T
 import json
 import gzip

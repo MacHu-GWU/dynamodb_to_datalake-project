@@ -13,32 +13,16 @@ from ordered_set import OrderedSet
 import pynamodb_mate as pm
 from rich import print as rprint
 
-from s00_lib import bsm, database, table, s3dir_athena_result
+from dynamodb_to_datalake.conifg_init import config
+from dynamodb_to_datalake.boto_ses import bsm
+from dynamodb_to_datalake.dynamodb_table import Transaction
+from dynamodb_to_datalake.athena import run_athena_query
 
 fake = Faker()
 
 
 def get_utc_now():
     return datetime.utcnow().replace(tzinfo=timezone.utc)
-
-
-class Transaction(pm.Model):
-    """
-    Dynamodb table data model
-    """
-
-    class Meta:
-        table_name = table
-        region = bsm.aws_region
-        billing_mode = pm.PAY_PER_REQUEST_BILLING_MODE
-
-    account = pm.UnicodeAttribute(hash_key=True)
-    create_at = pm.UTCDateTimeAttribute(range_key=True)
-    update_at = pm.UTCDateTimeAttribute()
-    entity = pm.UnicodeAttribute()
-    amount = pm.NumberAttribute()
-    is_credit = pm.NumberAttribute()  # 0 or 1
-    note = pm.UnicodeAttribute(null=True)
 
 
 digits = "0123456789"
@@ -62,33 +46,26 @@ def random_account() -> str:
 try:
     bsm.glue_client.get_table(
         CatalogId=bsm.aws_account_id,
-        DatabaseName=database,
-        Name=table,
+        DatabaseName=config.glue_database,
+        Name=config.glue_table,
     )
-    response = bsm.athena_client.start_query_execution(
-        QueryString=f"SELECT DISTINCT account FROM {database}.{table}",
-        QueryExecutionContext=dict(
-            Catalog="AwsDataCatalog",
-            Database=database,
-        ),
-        ResultConfiguration=dict(
-            OutputLocation=s3dir_athena_result.uri,
-        ),
-    )
-    exec_id = response["QueryExecutionId"]
-    time.sleep(3)  # wait 3 seconds for the query to finish
-    s3path_athena_result = s3dir_athena_result.joinpath(f"{exec_id}.csv")
-    _accounts = [
-        line[1:-1] for line in s3path_athena_result.read_text().splitlines()[1:]
-    ]
-    account_set = OrderedSet(_accounts)
+    table_exists = True
 except Exception as e:
     # if table not found, start with an empty set
     if "Entity Not Found" in str(e):
-        account_set = OrderedSet()  # in memory cache of all account
+        table_exists = False
     else:
         print(e)
         raise NotImplementedError
+
+if table_exists:
+    df = run_athena_query(
+        database=config.glue_database,
+        sql=f"SELECT DISTINCT account FROM {config.glue_database}.{config.glue_table}",
+    )
+    account_set = OrderedSet(df["account"])
+else:
+    account_set = OrderedSet()  # in memory cache of all account
 
 
 def new_transaction():
@@ -108,7 +85,7 @@ def new_transaction():
         note=fake.sentence(),
     )
     # print(f"create new transaction: {transaction.attribute_values}")
-    transaction.save()
+    # transaction.save()
 
 
 def update_transaction_note():
@@ -126,12 +103,12 @@ def update_transaction_note():
     )
     transaction = random.choice(transaction_list)  # randomly choose one to update
     now = get_utc_now()
-    transaction.update(
-        actions=[
-            Transaction.update_at.set(now),
-            Transaction.note.set(fake.sentence()),
-        ]
-    )
+    # transaction.update(
+    #     actions=[
+    #         Transaction.update_at.set(now),
+    #         Transaction.note.set(fake.sentence()),
+    #     ]
+    # )
 
 
 def run_data_faker():
@@ -154,6 +131,5 @@ def run_data_faker():
 if __name__ == "__main__":
     with bsm.awscli():  # connect to AWS
         pm.Connection()
-
         # Transaction.delete_all()
         run_data_faker()
