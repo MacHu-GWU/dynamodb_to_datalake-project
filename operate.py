@@ -48,10 +48,18 @@
 # delete_dynamodb_table()
 # cleanup()
 
-from dynamodb_to_datalake.runbook import (
-    create_infrastructure,
-    cleanup,
-)
+
+from dynamodb_to_datalake.show_info import show_info
+from dynamodb_to_datalake.cdk_deploy import cdk_deploy
+from dynamodb_to_datalake.dynamodb_export import export_dynamodb_to_s3
+# from dynamodb_to_datalake.runbook import (
+#     create_infrastructure,
+#     cleanup,
+# )
+
+show_info()
+cdk_deploy()
+# export_dynamodb_to_s3()
 
 # create_infrastructure()
-cleanup()
+# cleanup()

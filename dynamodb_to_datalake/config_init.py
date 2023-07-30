@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from .config import Config
+from .config_define import Config
 
 
 # last dynamodb stream partition update_at=2023-07-29-05-40
@@ -12,6 +12,6 @@ config = Config(
     dynamodb_table="transaction",
     glue_database="dynamodb_to_datalake",
     glue_table="transaction",
-    lambda_role_name="all-services-admin-role",
-    glue_role_name="all-services-admin-role",
+    lambda_role_name="dynamodb_to_datalake_lambda_role",
+    glue_role_name="dynamodb_to_datalake_glue_role",
 )

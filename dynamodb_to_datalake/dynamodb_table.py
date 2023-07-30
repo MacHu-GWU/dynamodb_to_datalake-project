@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 
-import time
 import pynamodb_mate as pm
 
-from .conifg_init import config
+from .config_init import config
 from .boto_ses import bsm
 
 

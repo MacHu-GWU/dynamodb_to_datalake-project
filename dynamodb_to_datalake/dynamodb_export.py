@@ -10,20 +10,19 @@ import gzip
 import dataclasses
 from datetime import datetime
 
-from .config import DYNAMODB_TABLE
+from .config_init import config
 from .boto_ses import bsm
-from .dynamodb_table import DYNAMODB_TABLE_ARN
 from .s3paths import s3dir_dynamodb_export, s3dir_dynamodb_export_processed
 
 
 def export_dynamodb_to_s3():
     now = datetime.utcnow()
     print(
-        f"export dynamodb {DYNAMODB_TABLE} at point-in-time {now} to s3 {s3dir_dynamodb_export.uri}"
+        f"export dynamodb {config.dynamodb_table} at point-in-time {now} to s3 {s3dir_dynamodb_export.uri}"
     )
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/export_table_to_point_in_time.html
     response = bsm.dynamodb_client.export_table_to_point_in_time(
-        TableArn=DYNAMODB_TABLE_ARN,
+        TableArn=config.dynamodb_table_arn,
         ExportTime=now,
         S3Bucket=s3dir_dynamodb_export.bucket,
         S3Prefix=s3dir_dynamodb_export.key,
@@ -42,7 +41,7 @@ def preprocess_dynamodb_export_data():
     print("preprocess dynamodb export data")
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/list_exports.html
     res = bsm.dynamodb_client.list_exports(
-        TableArn=DYNAMODB_TABLE_ARN,
+        TableArn=config.dynamodb_table_arn,
         MaxResults=25,
     )
     export_summaries = res.get("ExportSummaries", [])
@@ -136,7 +135,7 @@ class DynamoDBExport:
 
 def get_last_dynamodb_export() -> T.Optional[DynamoDBExport]:
     res = bsm.dynamodb_client.list_exports(
-        TableArn=DYNAMODB_TABLE_ARN,
+        TableArn=config.dynamodb_table_arn,
         MaxResults=25,
     )
     export_summaries = res.get("ExportSummaries", [])

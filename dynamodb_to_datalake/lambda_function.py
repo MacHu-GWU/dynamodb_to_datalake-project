@@ -7,7 +7,7 @@ Lambda function related functions.
 import typing as T
 from aws_lambda_layer.api import publish_source_artifacts
 
-from .conifg_init import config
+from .config_init import config
 from .boto_ses import bsm
 from .paths import (
     dir_project_root,

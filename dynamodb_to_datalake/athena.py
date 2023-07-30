@@ -6,7 +6,7 @@ Athena related functions.
 
 import polars as pl
 
-from .conifg_init import config
+from .config_init import config
 from .boto_ses import bsm
 from .s3paths import s3dir_athena_result
 from .paths import path_query_result

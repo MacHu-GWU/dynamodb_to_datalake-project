@@ -13,7 +13,7 @@ from ordered_set import OrderedSet
 import pynamodb_mate as pm
 from rich import print as rprint
 
-from dynamodb_to_datalake.conifg_init import config
+from dynamodb_to_datalake.config_init import config
 from dynamodb_to_datalake.boto_ses import bsm
 from dynamodb_to_datalake.dynamodb_table import Transaction
 from dynamodb_to_datalake.athena import run_athena_query
@@ -85,7 +85,7 @@ def new_transaction():
         note=fake.sentence(),
     )
     # print(f"create new transaction: {transaction.attribute_values}")
-    # transaction.save()
+    transaction.save()
 
 
 def update_transaction_note():
@@ -103,12 +103,12 @@ def update_transaction_note():
     )
     transaction = random.choice(transaction_list)  # randomly choose one to update
     now = get_utc_now()
-    # transaction.update(
-    #     actions=[
-    #         Transaction.update_at.set(now),
-    #         Transaction.note.set(fake.sentence()),
-    #     ]
-    # )
+    transaction.update(
+        actions=[
+            Transaction.update_at.set(now),
+            Transaction.note.set(fake.sentence()),
+        ]
+    )
 
 
 def run_data_faker():

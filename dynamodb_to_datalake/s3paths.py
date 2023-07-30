@@ -6,7 +6,7 @@ S3 file paths enumeration.
 
 from s3pathlib import S3Path
 
-from .conifg_init import config
+from .config_init import config
 
 
 # s3 folder to store deployment artifacts

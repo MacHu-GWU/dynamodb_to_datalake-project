@@ -55,6 +55,10 @@ class Config:
         return f"arn:aws:iam::{self.aws_account_id}:role/{self.glue_role_name}"
 
     @property
+    def stack_name(self) -> str:
+        return self.app_name.replace("_", "-")
+
+    @property
     def lambda_function_name_dynamodb_stream_consumer(self) -> str:
         return f"{self.app_name}_dynamodb_stream_consumer"
 
