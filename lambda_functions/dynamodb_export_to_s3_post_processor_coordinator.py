@@ -42,11 +42,14 @@ def grouper_list(iterable: T.Iterable, n: int) -> T.Iterable[list]:
 
 
 def lambda_handler(event, context):
+    """
+    :param event: triggered by s3 put event, example:
+        s3://111122223333-us-east-1-data/projects/dynamodb_to_datalake/dynamodb_export/AWSDynamoDB/01690735825858-1a2b3c4d/manifest-files.json
+    """
     record = event["Records"][0]
     bucket = record["s3"]["bucket"]["name"]
     key = record["s3"]["object"]["key"]
 
-    # example: s3://111122223333-us-east-1-data/projects/dynamodb_to_datalake/dynamodb_export/AWSDynamoDB/01690735825858-1a2b3c4d/manifest-files.json
     parts = key.split("/")
     if (parts[-1] != "manifest-files.json") or (parts[-3] != "AWSDynamoDB"):
         raise ValueError(f"s3://{bucket}/{key} is not a dynamodb export manifest file!")

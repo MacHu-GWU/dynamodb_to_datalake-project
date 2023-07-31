@@ -13,6 +13,8 @@ from .compat import cached_property
 @dataclasses.dataclass
 class Config:
     """
+    Project level configuration data model.
+
     :param app_name: app name, common prefix for all resources
     :param aws_profile: AWS cli profile for this project
     :param dynamodb_table: dynamodb table name
@@ -69,10 +71,6 @@ class Config:
     @property
     def lambda_function_name_dynamodb_export_to_s3_post_process_worker(self) -> str:
         return f"{self.app_name}_export_post_process_worker"
-
-    @property
-    def lambda_function_name_glue_job_coordinator(self) -> str:
-        return f"{self.app_name}_glue_job_coordinator"
 
     @property
     def glue_job_name_initial_load(self) -> str:

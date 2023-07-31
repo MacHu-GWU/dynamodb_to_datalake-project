@@ -14,6 +14,9 @@ s3_client = boto3.client("s3")
 
 
 def lambda_handler(event, context):
+    """
+    :param event: example, {"ith": ..., "bucket": ..., "key_list": [...]}
+    """
     ith = event["ith"]
     bucket = event["bucket"]
     key_list = event["key_list"]

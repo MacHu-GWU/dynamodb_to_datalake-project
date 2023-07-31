@@ -14,8 +14,8 @@ from dynamodb_to_datalake.api import (
     cleanup,
 )
 
-# show_info()
-# cdk_deploy()
+show_info()
+cdk_deploy()
 # export_dynamodb_to_s3()
 # run_initial_load_glue_job()
 # preview_hudi_table()
@@ -23,4 +23,4 @@ from dynamodb_to_datalake.api import (
 # preview_hudi_table()
 # compare() # dynamodb table shape: (58318, 13), hudi table shape: (52596, 13)
 # investigate()
-cleanup()
+# cleanup()

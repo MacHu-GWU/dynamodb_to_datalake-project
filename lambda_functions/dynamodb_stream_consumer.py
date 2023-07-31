@@ -9,6 +9,7 @@ This script reads data from DynamoDB Stream, transform it, and save it to S3.
 - batch window: 10 seconds
 """
 
+import typing as T
 import os
 import json
 import uuid
@@ -22,7 +23,7 @@ aws_account_id = sts_client.get_caller_identity()["Account"]
 aws_region = os.environ["AWS_REGION"]
 
 S3_BUCKET = os.environ["S3_BUCKET"]
-S3_PREFIX = os.environ["S3_PREFIX"] # processed dynamodb stream data s3 folder
+S3_PREFIX = os.environ["S3_PREFIX"]  # processed dynamodb stream data s3 folder
 if S3_PREFIX.endswith("/"):
     S3_PREFIX = S3_PREFIX[:-1]
 
@@ -32,7 +33,7 @@ def lambda_handler(event, context):
     print(f"received {len(records)} records")
     # print(records[:3]) # for debug only
 
-    groups = dict()  # partition data by update_at
+    groups: T.Dict[str, T.List[dict]] = dict()  # partition data by update_at
     for record in records:
         if record["eventName"] == "REMOVE":  # ignore delete event
             continue
@@ -72,8 +73,13 @@ def lambda_handler(event, context):
 
     # write cdc data to s3 by partition
     for partition, data_list in groups.items():
+        year, month, day, hour, minute = partition.split("-")
         bucket = S3_BUCKET
-        key = f"{S3_PREFIX}/update_at={partition}/{uuid.uuid4().hex}.json"
+        key = (
+            f"{S3_PREFIX}"
+            f"/year={year}/month={month}/day={day}/hour={hour}/minute={minute}"
+            f"/{uuid.uuid4().hex}.json"
+        )
         lines = [json.dumps(data) for data in data_list]
         print(f"write {len(data_list)} records to s3://{bucket}/{key}")
         s3_client.put_object(

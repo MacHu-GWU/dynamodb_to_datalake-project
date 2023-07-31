@@ -108,6 +108,7 @@ def create_dynamodb_stream_consumer_lambda_function():
             "Variables": {
                 "S3_BUCKET": s3dir_dynamodb_stream.bucket,
                 "S3_PREFIX": s3dir_dynamodb_stream.key,
+                "CODE_ETAG": source_artifacts_deployment.s3path_source_zip.etag,
             },
         },
     )
