@@ -29,6 +29,9 @@ class JobRunStateEnum(enum.Enum):
     WAITING = "WAITING"
 
 
+PARTITION_DATETIME_FORMAT = "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+
+
 @dataclasses.dataclass
 class CDCTracker:
     """
@@ -47,10 +50,10 @@ class CDCTracker:
     :param s3dir_dynamodb_stream: where you store the processed dynamodb stream data
         the data is partitioned on minutes level with the::
 
-        ${s3dir_dynamodb_stream}/update_at=YYYY-MM-DD-HH-MM/
-        ${s3dir_dynamodb_stream}/update_at=2023-01-01-00-00/
-        ${s3dir_dynamodb_stream}/update_at=2023-01-01-00-01/
-        ${s3dir_dynamodb_stream}/update_at=2023-01-01-00-02/
+        ${s3dir_dynamodb_stream}/year=YYYY/month=MM/day=DD/hour=HH/minute=MM/
+        ${s3dir_dynamodb_stream}/year=2023/month=01/day=01/hour=00/minute=01/
+        ${s3dir_dynamodb_stream}/year=2023/month=01/day=01/hour=00/minute=02/
+        ${s3dir_dynamodb_stream}/year=2023/month=01/day=01/hour=00/minute=03/
         ${s3dir_dynamodb_stream}/.../
     :param glue_job_name: the incremental glue job name.
     :param epoch_processed_partition: where the incremental data from.
@@ -64,12 +67,13 @@ class CDCTracker:
         basically if the last glue job is not succeeded, failed, stopped, then
         it is NOT ready.
     """
+
     # static attributes
     s3path_tracker: S3Path = dataclasses.field()
     s3dir_glue_job_input: S3Path = dataclasses.field()
     s3dir_dynamodb_stream: S3Path = dataclasses.field()
     glue_job_name: str = dataclasses.field()
-    epoch_processed_partition: str=  dataclasses.field()
+    epoch_processed_partition: str = dataclasses.field()
 
     # dynamic attributes
     last_glue_job_run_id: T.Optional[str] = dataclasses.field(default=None)
@@ -92,23 +96,8 @@ class CDCTracker:
         Read the tracker data from s3. If not exists, create a new one with
         initial value.
         """
-        # read from s3 if tracker exists
-        if s3path_tracker.exists(bsm=bsm):
-            data = json.loads(s3path_tracker.read_text(bsm=bsm))
-            return cls(
-                s3path_tracker=s3path_tracker,
-                s3dir_glue_job_input=s3dir_glue_job_input,
-                s3dir_dynamodb_stream=s3dir_dynamodb_stream,
-                glue_job_name=glue_job_name,
-                epoch_processed_partition=epoch_processed_partition,
-                last_glue_job_run_id=data["last_glue_job_run_id"],
-                last_glue_job_run_sequence_id=data["last_glue_job_run_sequence_id"],
-                last_processed_partition=data["last_processed_partition"],
-                next_processed_partition=data["next_processed_partition"],
-                ready_to_run_next_glue_job=data["ready_to_run_next_glue_job"],
-            )
         # set initial value if tracker not exists
-        else:
+        if s3path_tracker.exists(bsm=bsm) is False:
             tracker = cls(
                 s3path_tracker=s3path_tracker,
                 s3dir_glue_job_input=s3dir_glue_job_input,
@@ -122,6 +111,21 @@ class CDCTracker:
             )
             tracker.write(bsm=bsm)
             return tracker
+        # read from s3 if tracker exists
+        else:
+            data = json.loads(s3path_tracker.read_text(bsm=bsm))
+            return cls(
+                s3path_tracker=s3path_tracker,
+                s3dir_glue_job_input=s3dir_glue_job_input,
+                s3dir_dynamodb_stream=s3dir_dynamodb_stream,
+                glue_job_name=glue_job_name,
+                epoch_processed_partition=epoch_processed_partition,
+                last_glue_job_run_id=data["last_glue_job_run_id"],
+                last_glue_job_run_sequence_id=data["last_glue_job_run_sequence_id"],
+                last_processed_partition=data["last_processed_partition"],
+                next_processed_partition=data["next_processed_partition"],
+                ready_to_run_next_glue_job=data["ready_to_run_next_glue_job"],
+            )
 
     def write(
         self,
@@ -147,7 +151,10 @@ class CDCTracker:
 
     @property
     def last_processed_datetime(self) -> datetime:
-        return datetime.strptime(self.last_processed_partition, "%Y-%m-%d-%H-%M")
+        return datetime.strptime(
+            self.last_processed_partition,
+            PARTITION_DATETIME_FORMAT,
+        )
 
     @property
     def s3path_glue_job_input(self) -> S3Path:
@@ -171,11 +178,9 @@ class CDCTracker:
         # then we only process incremental files >= 2023-01-01-00-01
         start_after_partition = (
             self.last_processed_datetime + timedelta(minutes=1)
-        ).strftime("%Y-%m-%d-%H-%M")
+        ).strftime(PARTITION_DATETIME_FORMAT)
         start_after_key = (
-            self.s3dir_dynamodb_stream.joinpath(f"update_at={start_after_partition}")
-            .to_dir()
-            .key
+            self.s3dir_dynamodb_stream.joinpath(start_after_partition).to_dir().key
         )
 
         # let's say if the utc now is 2023-01-01 00:10:30.123456
@@ -184,14 +189,14 @@ class CDCTracker:
         # in this case, the next processed datatime should be 2023-01-01-00-08
         next_processed_datetime1 = datetime.utcnow() - timedelta(minutes=2)
         next_processed_datetime2 = self.last_processed_datetime + timedelta(minutes=60)
-        next_processed_datetime = min(next_processed_datetime1, next_processed_datetime2)
+        next_processed_datetime = min(
+            next_processed_datetime1, next_processed_datetime2
+        )
         end_before_partition = (
             next_processed_datetime + timedelta(minutes=1)
-        ).strftime("%Y-%m-%d-%H-%M")
+        ).strftime(PARTITION_DATETIME_FORMAT)
         end_before_key = (
-            self.s3dir_dynamodb_stream.joinpath(f"update_at={end_before_partition}")
-            .to_dir()
-            .key
+            self.s3dir_dynamodb_stream.joinpath(end_before_partition).to_dir().key
         )
 
         s3uri_list = list()
@@ -202,7 +207,9 @@ class CDCTracker:
                 s3uri_list.append(s3path.uri)
 
         if len(s3uri_list) == 0:
-            print(f"there is no new data between ({start_after_partition}, {end_before_partition}) to process, do nothing")
+            print(
+                f"there is no new data between ({start_after_partition}, {end_before_partition}) to process, do nothing"
+            )
             return False
 
         self.s3path_glue_job_input.write_text(
@@ -217,7 +224,7 @@ class CDCTracker:
             content_type="application/json",
         )
         self.next_processed_partition = next_processed_datetime.strftime(
-            "%Y-%m-%d-%H-%M"
+            PARTITION_DATETIME_FORMAT
         )
 
         # start job run
