@@ -10,9 +10,14 @@ import gzip
 import dataclasses
 from datetime import datetime
 
+from .vendor.aws_dynamodb_export_to_s3 import Export
 from .config_init import config
 from .boto_ses import bsm
-from .s3paths import s3dir_dynamodb_export, s3dir_dynamodb_export_processed
+from .s3paths import (
+    s3dir_dynamodb_export,
+    s3dir_dynamodb_export_processed,
+    s3path_dynamodb_export_tracker,
+)
 
 
 def export_dynamodb_to_s3():
@@ -20,17 +25,21 @@ def export_dynamodb_to_s3():
     print(
         f"export dynamodb {config.dynamodb_table} at point-in-time {now} to s3 {s3dir_dynamodb_export.uri}"
     )
-    # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/export_table_to_point_in_time.html
-    response = bsm.dynamodb_client.export_table_to_point_in_time(
-        TableArn=config.dynamodb_table_arn,
-        ExportTime=now,
-        S3Bucket=s3dir_dynamodb_export.bucket,
-        S3Prefix=s3dir_dynamodb_export.key,
-        ExportFormat="DYNAMODB_JSON",
+    export = Export.export_table_to_point_in_time(
+        dynamodb_client=bsm.dynamodb_client,
+        table_arn=config.dynamodb_table_arn,
+        s3_bucket=s3dir_dynamodb_export.bucket,
+        s3_prefix=s3dir_dynamodb_export.key,
     )
-    export_arn = response["ExportDescription"]["ExportArn"]
     print("it may takes a few minutes to complete")
-    print(f"export_arn = {export_arn}")
+    print(f"export_arn = {export.arn}")
+
+    # also dump the latest export ARN to s3 tracker file, so glue job can
+    # read from it and figure out where to read the initial load
+    s3path_dynamodb_export_tracker.write_text(
+        json.dumps({"export_arn": export.arn}),
+        content_type="application/json",
+    )
 
 
 def preprocess_dynamodb_export_data():
@@ -92,22 +101,9 @@ def preprocess_dynamodb_export_data():
             is_credit = int(item["Item"]["is_credit"]["N"])
             note = item["Item"]["note"]["S"]
 
-            create_at_datetime = datetime.strptime(create_at, "%Y-%m-%dT%H:%M:%S.%f%z")
-            create_year = str(create_at_datetime.year).zfill(4)
-            create_month = str(create_at_datetime.month).zfill(2)
-            create_day = str(create_at_datetime.day).zfill(2)
-            create_hour = str(create_at_datetime.hour).zfill(2)
-            create_minute = str(create_at_datetime.minute).zfill(2)
-
             row = dict(
-                id=f"account:{account},create_at:{create_at}",
                 account=account,
                 create_at=create_at,
-                create_year=create_year,
-                create_month=create_month,
-                create_day=create_day,
-                create_hour=create_hour,
-                create_minute=create_minute,
                 update_at=update_at,
                 entity=entity,
                 amount=amount,

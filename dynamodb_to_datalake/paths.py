@@ -12,6 +12,9 @@ dir_project_root = Path.dir_here(__file__).parent
 # lambda function source code
 dir_lbd_funcs = dir_project_root.joinpath("lambda_functions")
 path_lbd_func_dynamodb_stream_consumer = dir_lbd_funcs.joinpath("dynamodb_stream_consumer.py")
+path_lbd_func_dynamodb_export_to_s3_post_processor_coordinator = dir_lbd_funcs.joinpath("dynamodb_export_to_s3_post_processor_coordinator.py")
+path_lbd_func_dynamodb_export_to_s3_post_processor_worker = dir_lbd_funcs.joinpath("dynamodb_export_to_s3_post_processor_worker.py")
+
 
 # glue job source code
 dir_glue_jobs = dir_project_root.joinpath("glue_jobs")

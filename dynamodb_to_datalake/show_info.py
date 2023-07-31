@@ -16,6 +16,7 @@ def show_info():
     print(f"s3dir_dynamodb_stream: {s3paths.s3dir_dynamodb_stream.console_url}")
     print(f"s3dir_dynamodb_export: {s3paths.s3dir_dynamodb_export.console_url}")
     print(f"s3dir_dynamodb_export_processed: {s3paths.s3dir_dynamodb_export_processed.console_url}")
+    print(f"s3path_dynamodb_export_tracker: {s3paths.s3path_dynamodb_export_tracker.console_url}")
     print(f"s3dir_database: {s3paths.s3dir_database.console_url}")
     print(f"s3dir_table: {s3paths.s3dir_table.console_url}")
 
@@ -27,11 +28,17 @@ def show_info():
     print(f"dynamodb table {config.dynamodb_table!r}: {url}")
 
     print("------ Lambda Functions")
-    url = get_lambda_function_console_url(
-        aws_region=config.aws_region,
-        function_name=config.lambda_function_name_dynamodb_stream_consumer,
-    )
-    print(f"lambda function {config.lambda_function_name_dynamodb_stream_consumer!r}: {url}")
+    function_name_list = [
+        config.lambda_function_name_dynamodb_stream_consumer,
+        config.lambda_function_name_dynamodb_export_to_s3_post_process_coordinator,
+        config.lambda_function_name_dynamodb_export_to_s3_post_process_worker,
+    ]
+    for function_name in function_name_list:
+        url = get_lambda_function_console_url(
+            aws_region=config.aws_region,
+            function_name=function_name,
+        )
+        print(f"lambda function {function_name!r}: {url}")
 
     print("------ Glue Catalog")
     url = get_glue_database_console_url(

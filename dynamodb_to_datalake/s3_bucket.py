@@ -28,3 +28,5 @@ def create_bucket(
     if aws_region != "us-east-1":
         kwargs["CreateBucketConfiguration"] = dict(LocationConstraint=aws_region)
     s3_client.create_bucket(**kwargs)
+
+

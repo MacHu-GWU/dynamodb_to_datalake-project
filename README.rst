@@ -189,3 +189,30 @@ Initial Load
 **实际操作**
 
 第一次有 7269 条数据.
+
+DynamoDB Stream Lambda Function Output File Content:
+
+.. code-block:: python
+
+    {"account": "622-331-1164", "create_at": "2023-07-30T16:49:47.237081+0000", "update_at": "2023-07-30T16:49:47.237081+0000", "entity": "May, English and Hartman", "amount": 452, "is_credit": 0, "note": "Specific indeed or opportunity determine trial."}
+    {"account": "755-987-0981", "create_at": "2023-07-30T16:49:47.394896+0000", "update_at": "2023-07-30T16:49:47.394896+0000", "entity": "Bowman and Sons", "amount": 865, "is_credit": 1, "note": "Product simply assume."}
+    {"account": "045-465-4079", "create_at": "2023-07-30T16:49:47.573820+0000", "update_at": "2023-07-30T16:49:47.573820+0000", "entity": "Palmer, Peters and Johnson", "amount": 738, "is_credit": 1, "note": "Avoid girl situation name view."}
+    ...
+
+DynamoDB Export to S3 Output File Content
+
+.. code-block:: python
+
+    {"Item":{"account":{"S":"602-943-1702"},"create_at":{"S":"2023-07-30T16:49:36.444736+0000"},"entity":{"S":"James, Lopez and Welch"},"note":{"S":"Be Mrs small will organization everybody sign."},"update_at":{"S":"2023-07-30T16:49:36.444736+0000"},"amount":{"N":"282"},"is_credit":{"N":"1"}}}
+    {"Item":{"account":{"S":"729-692-8634"},"create_at":{"S":"2023-07-30T16:49:19.238896+0000"},"entity":{"S":"Pena, Harrison and Cummings"},"note":{"S":"On common speak cultural day protect."},"update_at":{"S":"2023-07-30T16:49:19.238896+0000"},"amount":{"N":"518"},"is_credit":{"N":"1"}}}
+    {"Item":{"account":{"S":"120-161-2287"},"create_at":{"S":"2023-07-30T16:49:20.627894+0000"},"entity":{"S":"Wall-Moreno"},"note":{"S":"Various type past mouth daughter reality husband national."},"update_at":{"S":"2023-07-30T16:49:20.627894+0000"},"amount":{"N":"990"},"is_credit":{"N":"0"}}}
+    ...
+
+DynamoDB Export to S3 Processed File Content
+
+.. code-block:: python
+
+    {"id": "account:602-943-1702,create_at:2023-07-30T16:49:36.444736+0000", "account": "602-943-1702", "create_at": "2023-07-30T16:49:36.444736+0000", "create_year": "2023", "create_month": "07", "create_day": "30", "create_hour": "16", "create_minute": "49", "update_at": "2023-07-30T16:49:36.444736+0000", "entity": "James, Lopez and Welch", "amount": 282, "is_credit": 1, "note": "Be Mrs small will organization everybody sign."}
+    {"id": "account:729-692-8634,create_at:2023-07-30T16:49:19.238896+0000", "account": "729-692-8634", "create_at": "2023-07-30T16:49:19.238896+0000", "create_year": "2023", "create_month": "07", "create_day": "30", "create_hour": "16", "create_minute": "49", "update_at": "2023-07-30T16:49:19.238896+0000", "entity": "Pena, Harrison and Cummings", "amount": 518, "is_credit": 1, "note": "On common speak cultural day protect."}
+    {"id": "account:120-161-2287,create_at:2023-07-30T16:49:20.627894+0000", "account": "120-161-2287", "create_at": "2023-07-30T16:49:20.627894+0000", "create_year": "2023", "create_month": "07", "create_day": "30", "create_hour": "16", "create_minute": "49", "update_at": "2023-07-30T16:49:20.627894+0000", "entity": "Wall-Moreno", "amount": 990, "is_credit": 0, "note": "Various type past mouth daughter reality husband national."}
+    ...

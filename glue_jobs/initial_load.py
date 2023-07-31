@@ -30,6 +30,7 @@ args = getResolvedOptions(
     [
         "JOB_NAME",
         "S3URI_DYNAMODB_EXPORT_PROCESSED",
+        "S3URI_DYNAMODB_EXPORT_TRACKER",
         "S3URI_TABLE",
         "DATABASE_NAME",
         "TABLE_NAME",
@@ -39,6 +40,7 @@ job = Job(glue_ctx)
 job.init(args["JOB_NAME"], args)
 
 S3URI_DYNAMODB_EXPORT_PROCESSED = args["S3URI_DYNAMODB_EXPORT_PROCESSED"]
+S3URI_DYNAMODB_EXPORT_TRACKER = args["S3URI_DYNAMODB_EXPORT_TRACKER"]
 S3URI_TABLE = args["S3URI_TABLE"]
 DATABASE_NAME = args["DATABASE_NAME"]
 TABLE_NAME = args["TABLE_NAME"]
@@ -53,11 +55,27 @@ aws_region = boto_ses.region_name
 print(f"aws_account_id = {aws_account_id}")
 print(f"aws_region = {aws_region}")
 
+import json
+
+s3_client = boto_ses.client("s3")
+parts = S3URI_DYNAMODB_EXPORT_TRACKER.split("/", 3)
+bucket = parts[2]
+key = parts[3]
+res = s3_client.get_object(
+    Bucket=bucket,
+    Key=key
+)
+export_arn = json.loads(res["Body"].read().decode("utf-8"))["export_arn"]
+export_id = export_arn.split("/")[-1]
+if S3URI_DYNAMODB_EXPORT_PROCESSED.endswith("/"):
+    S3URI_DYNAMODB_EXPORT_PROCESSED = S3URI_DYNAMODB_EXPORT_PROCESSED[:-1]
+s3uri_dynamodb_export_processed = f"{S3URI_DYNAMODB_EXPORT_PROCESSED}/AWSDynamoDB/{export_id}/data/"
+
 pdf_initial = glue_ctx.create_dynamic_frame.from_options(
     connection_type="s3",
     connection_options={
         "paths": [
-            S3URI_DYNAMODB_EXPORT_PROCESSED,
+            s3uri_dynamodb_export_processed,
         ],
         "recurse": True,
     },
@@ -72,6 +90,34 @@ def show_df(pdf, n: int = 3):
 
 # show_df(pdf_initial)
 # pdf_initial.count()
+
+# generate create_year, create_month, ..., create_minute columns
+from pyspark.sql import functions as F
+
+pdf_initial = pdf_initial.withColumn(
+    "id",
+    F.concat(
+        F.lit("account:"),
+        pdf_initial.account,
+        F.lit(",create_at:"),
+        pdf_initial.create_at,
+    )
+).withColumn(
+    "create_year",
+    F.substring(pdf_initial.create_at, 1, 4),
+).withColumn(
+    "create_month",
+    F.substring(pdf_initial.create_at, 6, 2),
+).withColumn(
+    "create_day",
+    F.substring(pdf_initial.create_at, 9, 2),
+).withColumn(
+    "create_hour",
+    F.substring(pdf_initial.create_at, 12, 2),
+).withColumn(
+    "create_minute",
+    F.substring(pdf_initial.create_at, 15, 2),
+)
 
 database = DATABASE_NAME
 table = TABLE_NAME

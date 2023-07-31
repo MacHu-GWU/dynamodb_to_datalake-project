@@ -37,6 +37,7 @@ s3dir_dynamodb_export = s3dir_data.joinpath("dynamodb_export").to_dir()
 s3dir_dynamodb_export_processed = s3dir_data.joinpath(
     "dynamodb_export_processed"
 ).to_dir()
+s3path_dynamodb_export_tracker = s3dir_data.joinpath("dynamodb_export_tracker.json")
 
 # s3 path to store incremental glue job input parameter
 s3path_incremental_glue_job_input = s3dir_data.joinpath(

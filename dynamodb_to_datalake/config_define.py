@@ -63,6 +63,14 @@ class Config:
         return f"{self.app_name}_dynamodb_stream_consumer"
 
     @property
+    def lambda_function_name_dynamodb_export_to_s3_post_process_coordinator(self) -> str:
+        return f"{self.app_name}_export_post_process_coordinator"
+
+    @property
+    def lambda_function_name_dynamodb_export_to_s3_post_process_worker(self) -> str:
+        return f"{self.app_name}_export_post_process_worker"
+
+    @property
     def lambda_function_name_glue_job_coordinator(self) -> str:
         return f"{self.app_name}_glue_job_coordinator"
 

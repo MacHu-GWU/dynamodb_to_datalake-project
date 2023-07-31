@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import typing as T
-import json
-import dataclasses
-from datetime import datetime, timedelta, timezone
-
 from pathlib_mate import Path
 
 from .config_init import config
@@ -21,7 +17,7 @@ from .paths import (
     path_glue_script_initial_load,
     path_glue_script_incremental,
 )
-from .dynamodb_export import get_last_dynamodb_export
+from .incremental_load_orchestration import CDCTracker
 
 
 def get_glue_job_console_url(
@@ -83,13 +79,12 @@ def create_hudi_glue_job(
         job_script.read_text(),
         content_type="text/plain",
     )
-    # console_url = (
-    #     f"https://{bsm.aws_region}.console.aws.amazon.com/gluestudio"
-    #     f"/home?region={bsm.aws_region}#/editor/job/{job_name}/script"
-    # )
-    # print(f"create glue job {job_name!r} from {s3path_artifact.uri}")
-    # print(f"preview etl script at: {s3path_artifact.console_url}")
-    # print(f"preview glue job at: {console_url}")
+    print(f"create glue job {job_name!r} from {s3path_artifact.uri}")
+    print(f"preview etl script at: {s3path_artifact.console_url}")
+    console_url = get_glue_job_console_url(
+        aws_region=config.aws_region, job_name=job_name
+    )
+    print(f"preview glue job at: {console_url}")
 
     # create glue job
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/glue/client/create_job.html
@@ -109,6 +104,7 @@ def create_hudi_glue_job(
         "--job-language": "python",
         "--spark-event-logs-path": f"s3://{config.s3_bucket_glue_assets}/sparkHistoryLogs/",
         "--TempDir": f"s3://{config.s3_bucket_glue_assets}/temporary/",
+        "--CODE_ETAG": s3path_artifact.etag,
     }
     default_arguments.update(additional_params)
     bsm.glue_client.create_job(
@@ -161,97 +157,19 @@ def create_incremental_glue_job():
 
 
 def run_initial_load_glue_job():
+    print("run initial load glue job")
     bsm.glue_client.start_job_run(
         JobName=config.glue_job_name_initial_load,
     )
 
 
-
-# @dataclasses.dataclass
-# class Tracker:
-#     @classmethod
-#     def read(cls):
-#         s3path_incremental_glue_job_tracker.exists() is False:
-#         s3path_incremental_glue_job_tracker.write_text(
-#             epoch_start_time.strftime("%Y-%m-%d-%H-%M"),
-#             content_type="text/plain",
-#         )
-
-
-# def run_incremental_glue_job():
-#     # ensure there is no running incremental glue job
-#     print("run incremental glue job")
-#     paginator = bsm.glue_client.get_paginator("get_job_runs")
-#     response_iterator = paginator.paginate(
-#         JobName=glue_job_name_incremental,
-#         PaginationConfig={
-#             "MaxItems": 10,
-#             "PageSize": 50,
-#         }
-#     )
-#     job_runs = list()
-#     for response in response_iterator:
-#         job_runs.extend(response.get("JobRuns", []))
-#
-#     if len(job_runs) > 0:
-#         state = job_runs[0]["JobRunState"]
-#         if state in ["STOPPED", "STOPPED", "FAILED", "TIMEOUT", "ERROR"]:
-#             pass
-#         elif state in ["STARTING", "RUNNING", "STOPPING", "WAITING"]:
-#             print("there is a running incremental glue job, do nothing")
-#             return
-#
-#     # figure out the incremental data start time if it is the first time to run
-#     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/describe_export.html
-#     response = bsm.dynamodb_client.describe_export(
-#         ExportArn=DYNAMODB_INITIAL_LOAD_EXPORT_ARN,
-#     )
-#     export_time = response["ExportDescription"]["ExportTime"].astimezone(timezone.utc)
-#     epoch_start_time: datetime = export_time - timedelta(minutes=2)
-#
-#     print(f"preview s3path_incremental_glue_job_tracker: {s3path_incremental_glue_job_tracker.console_url}")
-#     if s3path_incremental_glue_job_tracker.exists() is False:
-#         s3path_incremental_glue_job_tracker.write_text(
-#             epoch_start_time.strftime("%Y-%m-%d-%H-%M"),
-#             content_type="text/plain",
-#         )
-#
-#     update_at = s3path_incremental_glue_job_tracker.read_text()
-#     start_at = update_at
-#     now = datetime.utcnow()
-#     end_at = (now - timedelta(minutes=2)).strftime("%Y-%m-%d-%H-%M")
-#     if end_at <= start_at:
-#         print("no sufficient incremental data to process, do nothing.")
-#         return
-#
-#     # update_at=2023-07-29-05-40
-#     todo_s3path_list = list()
-#     print(f"process incremental data {start_at!r} < X <= {end_at!r}")
-#     for s3dir in s3dir_dynamodb_stream.iterdir():
-#         if start_at < s3dir.basename.split("=", 1)[1] <= end_at:
-#             for s3path in s3dir.iter_objects():
-#                 todo_s3path_list.append(s3path)
-#
-#     if len(todo_s3path_list) == 0:
-#         print("no incremental data to process, do nothing.")
-#         return
-#
-#     input_data = {
-#         "s3uri_list": [
-#             s3path.uri
-#             for s3path in todo_s3path_list
-#         ]
-#     }
-#     s3path_incremental_glue_job_input.write_text(
-#         json.dumps(input_data),
-#         content_type="application/json",
-#     )
-#     print(f"preview s3path_incremental_glue_job_input: {s3path_incremental_glue_job_input.console_url}")
-#     bsm.glue_client.start_job_run(
-#         JobName=glue_job_name_incremental,
-#     )
-#
-#     s3path_incremental_glue_job_tracker.write_text(
-#         end_at,
-#         content_type="text/plain",
-#     )
+def run_incremental_glue_job(epoch_processed_partition: str):
+    tracker = CDCTracker.read(
+        bsm=bsm,
+        s3path_tracker=s3path_incremental_glue_job_tracker,
+        s3path_glue_job_params=s3path_incremental_glue_job_input,
+        s3dir_dynamodb_stream=s3dir_dynamodb_stream,
+        glue_job_name=config.glue_job_name_incremental,
+        epoch_processed_partition=epoch_processed_partition,
+    )
+    tracker.run_glue_job(bsm=bsm)

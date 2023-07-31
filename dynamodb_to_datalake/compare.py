@@ -5,7 +5,7 @@ import typing as T
 import polars as pl
 from rich import print as rprint
 
-from .config import DATABASE, TABLE
+from .config_init import config
 from .boto_ses import bsm
 from .dynamodb_table import Transaction
 from .athena import run_athena_query
@@ -59,8 +59,8 @@ def read_from_dynamodb() -> T.List[T.Dict[str, T.Any]]:
 
 def read_from_hudi() -> T.List[T.Dict[str, T.Any]]:
     df = run_athena_query(
-        database=DATABASE,
-        sql=f"SELECT * FROM {DATABASE}.{TABLE}",
+        database=config.glue_database,
+        sql=f"SELECT * FROM {config.glue_database}.{config.glue_table}",
     )
     df = df.drop(
         [
@@ -85,12 +85,19 @@ def compare():
     """
     records1 = read_from_dynamodb()
     records2 = read_from_hudi()
-    # for record1, record2 in zip(records1, records2):
-    #     if record1 != record2:
-    #         print("-" * 80)
-    #         rprint(record1)
-    #         rprint(record2)
-    #         for key, value1 in record1.items():
-    #             value2 = record2[key]
-    #             if value1 != value2:
-    #                 print(f"{key}: {value1} != {value2}")
+    is_same = True
+    for record1, record2 in zip(records1, records2):
+        if record1 != record2:
+            print("-" * 80)
+            rprint(record1)
+            rprint(record2)
+            is_same = False
+            for key, value1 in record1.items():
+                value2 = record2[key]
+                if value1 != value2:
+                    print(f"{key}: {value1} != {value2}")
+
+    if is_same is True:
+        print("The data in dynamodb and hudi are exactly the same.")
+    else:
+        print("The data in dynamodb and hudi are not the same.")
