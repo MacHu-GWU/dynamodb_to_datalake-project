@@ -92,18 +92,24 @@ def compare():
     """
     records1 = read_from_dynamodb()
     records2 = read_from_hudi()
+    print(f"records in dynamodb: {len(records2)}")
+    print(f"records in hudi: {len(records1)}")
+    records1_id_set = {record["id"] for record in records1}
+    records2_id_set = {record["id"] for record in records2}
+    delta_id_set = records1_id_set.difference(records2_id_set)
+    delta_id_list = list(delta_id_set)
+    rprint(delta_id_list[:10])
     is_same = True
-    # for record1, record2 in zip(records1, records2):
-    #     if record1 != record2:
+    for record1, record2 in zip(records1, records2):
+        if record1 != record2:
     #         print("-" * 80)
     #         rprint(record1)
     #         rprint(record2)
-    #         is_same = False
+            is_same = False
     #         for key, value1 in record1.items():
     #             value2 = record2[key]
     #             if value1 != value2:
     #                 print(f"{key}: {value1} != {value2}")
-
     if is_same is True:
         print("The data in dynamodb and hudi are exactly the same.")
     else:

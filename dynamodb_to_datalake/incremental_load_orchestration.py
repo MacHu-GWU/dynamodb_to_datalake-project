@@ -2,6 +2,10 @@
 
 """
 Incremental load orchestration logics.
+
+[CN]
+
+这个模块实现了每隔一段时间将最新的 Incremental Data Load 到 Hudi Table 中的 Cron Job 逻辑.
 """
 
 import typing as T
@@ -28,29 +32,48 @@ class JobRunStateEnum(enum.Enum):
 @dataclasses.dataclass
 class CDCTracker:
     """
-    :param s3path_tracker: where you store the cdc tracker data
-    :param s3path_glue_job_input: where you store the glue job parameters
+    Cron Job 的编排逻辑实现.
+
+    :param s3path_tracker: where you store the cdc tracker data.
+    :param s3dir_glue_job_input: where you store the glue job input parameters
+        the folder structure looks like ``${reverse_sequence_id}-${sequence_id}``,
+        the sequence id starts from 1, 2, ...::
+
+        ...
+        ${s3dir_glue_job_input}/999999997-000000003.json
+        ${s3dir_glue_job_input}/999999998-000000002.json
+        ${s3dir_glue_job_input}/999999999-000000001.json
+
     :param s3dir_dynamodb_stream: where you store the processed dynamodb stream data
-         the data is partitioned on minutes level with the::
+        the data is partitioned on minutes level with the::
 
         ${s3dir_dynamodb_stream}/update_at=YYYY-MM-DD-HH-MM/
         ${s3dir_dynamodb_stream}/update_at=2023-01-01-00-00/
         ${s3dir_dynamodb_stream}/update_at=2023-01-01-00-01/
         ${s3dir_dynamodb_stream}/update_at=2023-01-01-00-02/
         ${s3dir_dynamodb_stream}/.../
+    :param glue_job_name: the incremental glue job name.
+    :param epoch_processed_partition: where the incremental data from.
 
-
+    :param last_glue_job_run_id: the last glue job run id
+    :param last_glue_job_run_sequence_id: the last glue job run sequence id
+    :param last_processed_partition: the last processed partition
+    :param next_processed_partition: the next processed partition if the last
+        glue job run succeed.
+    :param ready_to_run_next_glue_job: whether the next glue job is ready to run.
+        basically if the last glue job is not succeeded, failed, stopped, then
+        it is NOT ready.
     """
-
     # static attributes
     s3path_tracker: S3Path = dataclasses.field()
-    s3path_glue_job_params: S3Path = dataclasses.field()
+    s3dir_glue_job_input: S3Path = dataclasses.field()
     s3dir_dynamodb_stream: S3Path = dataclasses.field()
     glue_job_name: str = dataclasses.field()
     epoch_processed_partition: str=  dataclasses.field()
 
     # dynamic attributes
     last_glue_job_run_id: T.Optional[str] = dataclasses.field(default=None)
+    last_glue_job_run_sequence_id: T.Optional[int] = dataclasses.field(default=None)
     last_processed_partition: T.Optional[str] = dataclasses.field(default=None)
     next_processed_partition: T.Optional[str] = dataclasses.field(default=None)
     ready_to_run_next_glue_job: T.Optional[bool] = dataclasses.field(default=None)
@@ -60,7 +83,7 @@ class CDCTracker:
         cls,
         bsm: BotoSesManager,
         s3path_tracker: S3Path,
-        s3path_glue_job_params: S3Path,
+        s3dir_glue_job_input: S3Path,
         s3dir_dynamodb_stream: S3Path,
         glue_job_name: str,
         epoch_processed_partition: str,
@@ -69,27 +92,31 @@ class CDCTracker:
         Read the tracker data from s3. If not exists, create a new one with
         initial value.
         """
+        # read from s3 if tracker exists
         if s3path_tracker.exists(bsm=bsm):
             data = json.loads(s3path_tracker.read_text(bsm=bsm))
             return cls(
                 s3path_tracker=s3path_tracker,
-                s3path_glue_job_params=s3path_glue_job_params,
+                s3dir_glue_job_input=s3dir_glue_job_input,
                 s3dir_dynamodb_stream=s3dir_dynamodb_stream,
                 glue_job_name=glue_job_name,
                 epoch_processed_partition=epoch_processed_partition,
                 last_glue_job_run_id=data["last_glue_job_run_id"],
+                last_glue_job_run_sequence_id=data["last_glue_job_run_sequence_id"],
                 last_processed_partition=data["last_processed_partition"],
                 next_processed_partition=data["next_processed_partition"],
                 ready_to_run_next_glue_job=data["ready_to_run_next_glue_job"],
             )
+        # set initial value if tracker not exists
         else:
             tracker = cls(
                 s3path_tracker=s3path_tracker,
-                s3path_glue_job_params=s3path_glue_job_params,
+                s3dir_glue_job_input=s3dir_glue_job_input,
                 s3dir_dynamodb_stream=s3dir_dynamodb_stream,
                 glue_job_name=glue_job_name,
                 epoch_processed_partition=epoch_processed_partition,
                 last_glue_job_run_id=None,
+                last_glue_job_run_sequence_id=0,
                 last_processed_partition=epoch_processed_partition,
                 ready_to_run_next_glue_job=True,
             )
@@ -107,6 +134,7 @@ class CDCTracker:
             json.dumps(
                 {
                     "last_glue_job_run_id": self.last_glue_job_run_id,
+                    "last_glue_job_run_sequence_id": self.last_glue_job_run_sequence_id,
                     "last_processed_partition": self.last_processed_partition,
                     "next_processed_partition": self.next_processed_partition,
                     "ready_to_run_next_glue_job": self.ready_to_run_next_glue_job,
@@ -121,11 +149,26 @@ class CDCTracker:
     def last_processed_datetime(self) -> datetime:
         return datetime.strptime(self.last_processed_partition, "%Y-%m-%d-%H-%M")
 
+    @property
+    def s3path_glue_job_input(self) -> S3Path:
+        """
+        Find the s3path of the glue job input file if we run a new glue job.
+
+        If last glue job run sequence id is 3, then the file name will be
+        ``999999997-000000003.json``. This naming convention can return latest
+        glue job input parameter file first when we list the s3 directory.
+        """
+        filename = (
+            f"{str(1000000000 - self.last_glue_job_run_sequence_id).zfill(9)}"
+            f"-{str(self.last_glue_job_run_sequence_id).zfill(9)}.json"
+        )
+        return self.s3dir_glue_job_input.joinpath(filename)
+
     def _run_glue_job(self, bsm: BotoSesManager):
         # prepare the glue job parameters
         print("prepare the glue job parameters.")
-        next_processed_datetime = datetime.utcnow() - timedelta(minutes=2)
-
+        # let's say if the last processed partition is 2023-01-01-00-00
+        # then we only process incremental files >= 2023-01-01-00-01
         start_after_partition = (
             self.last_processed_datetime + timedelta(minutes=1)
         ).strftime("%Y-%m-%d-%H-%M")
@@ -135,6 +178,13 @@ class CDCTracker:
             .key
         )
 
+        # let's say if the utc now is 2023-01-01 00:10:30.123456
+        # then we only process incremental files < 2023-01-01-00-09
+        # because the data at 2023-01-01-00-09 may still on-the-fly
+        # in this case, the next processed datatime should be 2023-01-01-00-08
+        next_processed_datetime1 = datetime.utcnow() - timedelta(minutes=2)
+        next_processed_datetime2 = self.last_processed_datetime + timedelta(minutes=60)
+        next_processed_datetime = min(next_processed_datetime1, next_processed_datetime2)
         end_before_partition = (
             next_processed_datetime + timedelta(minutes=1)
         ).strftime("%Y-%m-%d-%H-%M")
@@ -155,7 +205,7 @@ class CDCTracker:
             print(f"there is no new data between ({start_after_partition}, {end_before_partition}) to process, do nothing")
             return False
 
-        self.s3path_glue_job_params.write_text(
+        self.s3path_glue_job_input.write_text(
             json.dumps(
                 {
                     "start_after_partition": start_after_partition,
@@ -176,10 +226,14 @@ class CDCTracker:
         try:
             res = bsm.glue_client.start_job_run(
                 JobName=self.glue_job_name,
+                Arguments={
+                    "--S3URI_INCREMENTAL_GLUE_JOB_INPUT": self.s3path_glue_job_input.uri,
+                },
             )
             job_run_id = res["JobRunId"]
             print(f"job run id = {job_run_id}")
             self.last_glue_job_run_id = job_run_id
+            self.last_glue_job_run_sequence_id += 1
             self.ready_to_run_next_glue_job = False
             self.write(bsm=bsm)
             return True

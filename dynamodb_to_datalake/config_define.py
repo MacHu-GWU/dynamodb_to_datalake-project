@@ -55,7 +55,7 @@ class Config:
         return f"arn:aws:iam::{self.aws_account_id}:role/{self.glue_role_name}"
 
     @property
-    def stack_name(self) -> str:
+    def cloudformation_stack_name(self) -> str:
         return self.app_name.replace("_", "-")
 
     @property

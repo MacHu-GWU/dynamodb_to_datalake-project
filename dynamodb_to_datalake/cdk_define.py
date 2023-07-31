@@ -1,10 +1,8 @@
+# -*- coding: utf-8 -*-
+
 # ------------------------------------------------------------------------------
 # Import dependencies
 # ------------------------------------------------------------------------------
-import json
-import dataclasses
-from pathlib_mate import Path
-
 import aws_cdk as cdk
 import aws_cdk.aws_s3 as s3
 import aws_cdk.aws_s3_notifications as s3_notifications
@@ -14,12 +12,6 @@ import aws_cdk.aws_lambda as lambda_
 import aws_cdk.aws_lambda_event_sources as lambda_event_sources
 import aws_cdk.aws_glue as glue
 
-import aws_cdk.aws_events as events
-import aws_cdk.aws_events_targets as events_targets
-import aws_cdk.aws_codecommit as codecommit
-import aws_cdk.aws_codebuild as codebuild
-import aws_cdk.aws_codepipeline as codepipeline
-import aws_cdk.aws_codepipeline_actions as codepipeline_actions
 from constructs import Construct
 
 from aws_lambda_layer.api import publish_source_artifacts
@@ -212,7 +204,6 @@ class Stack(cdk.Stack):
             timeout=60,
             default_arguments={
                 **default_arguments,
-                "--S3URI_INCREMENTAL_GLUE_JOB_INPUT": s3paths.s3path_incremental_glue_job_input.uri,
                 "--S3URI_INCREMENTAL_GLUE_JOB_TRACKER": s3paths.s3path_incremental_glue_job_tracker.uri,
                 "--S3URI_TABLE": s3paths.s3dir_table.uri,
                 "--DATABASE_NAME": self.config.glue_database,
@@ -351,7 +342,7 @@ def app_synth():
     stack = Stack(
         app,
         construct_id=f"DynamoDBtoDataLakeStack",
-        stack_name=config.stack_name,
+        stack_name=config.cloudformation_stack_name,
         config=config,
     )
 

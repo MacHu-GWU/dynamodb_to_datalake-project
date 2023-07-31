@@ -10,7 +10,7 @@ from .s3paths import (
     s3dir_dynamodb_export_processed,
     s3dir_dynamodb_stream,
     s3dir_table,
-    s3path_incremental_glue_job_input,
+    s3dir_incremental_glue_job_input,
     s3path_incremental_glue_job_tracker,
 )
 from .paths import (
@@ -147,7 +147,6 @@ def create_incremental_glue_job():
         job_script=path_glue_script_incremental,
         glue_role_arn=config.glue_role_arn,
         additional_params={
-            "--S3URI_INCREMENTAL_GLUE_JOB_INPUT": s3path_incremental_glue_job_input.uri,
             "--S3URI_INCREMENTAL_GLUE_JOB_TRACKER": s3path_incremental_glue_job_tracker.uri,
             "--S3URI_TABLE": s3dir_table.uri,
             "--DATABASE_NAME": config.glue_database,
@@ -167,7 +166,7 @@ def run_incremental_glue_job(epoch_processed_partition: str):
     tracker = CDCTracker.read(
         bsm=bsm,
         s3path_tracker=s3path_incremental_glue_job_tracker,
-        s3path_glue_job_params=s3path_incremental_glue_job_input,
+        s3dir_glue_job_input=s3dir_incremental_glue_job_input,
         s3dir_dynamodb_stream=s3dir_dynamodb_stream,
         glue_job_name=config.glue_job_name_incremental,
         epoch_processed_partition=epoch_processed_partition,

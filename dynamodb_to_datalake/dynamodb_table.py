@@ -76,4 +76,3 @@ def delete_dynamodb_table():
                 pass
             else:
                 raise NotImplementedError
-
