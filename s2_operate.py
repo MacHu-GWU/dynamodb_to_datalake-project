@@ -50,7 +50,7 @@
 
 
 from dynamodb_to_datalake.show_info import show_info
-# from dynamodb_to_datalake.cdk_deploy import cdk_deploy
+from dynamodb_to_datalake.cdk_deploy import cdk_deploy
 from dynamodb_to_datalake.dynamodb_export import export_dynamodb_to_s3
 from dynamodb_to_datalake.dynamodb_export import preprocess_dynamodb_export_data
 from dynamodb_to_datalake.glue_job import run_initial_load_glue_job, run_incremental_glue_job
@@ -58,11 +58,11 @@ from dynamodb_to_datalake.athena import preview_hudi_table
 from dynamodb_to_datalake.compare import compare
 
 # show_info()
-# cdk_deploy()
+cdk_deploy()
 # export_dynamodb_to_s3()
 # run_initial_load_glue_job()
 # preview_hudi_table()
-run_incremental_glue_job(epoch_processed_partition="2023-07-30-21-31")
+# run_incremental_glue_job(epoch_processed_partition="2023-07-30-21-31")
 # preview_hudi_table()
 # compare()
 

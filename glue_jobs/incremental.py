@@ -1,19 +1,23 @@
 # -*- coding: utf-8 -*-
 
 import sys
+import json
+
+import boto3
 
 from pyspark import SparkConf
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
 from pyspark.context import SparkContext
 
 from awsglue.utils import getResolvedOptions
 from awsglue.context import GlueContext
 from awsglue.job import Job
 
-import json
-from datetime import datetime
-import boto3
-
+# ------------------------------------------------------------------------------
+# create spark session
+# ------------------------------------------------------------------------------
 conf = (
     SparkConf()
     .setAppName("MyApp")
@@ -28,7 +32,9 @@ spark_ses = SparkSession.builder.config(conf=conf).enableHiveSupport().getOrCrea
 spark_ctx = spark_ses.sparkContext
 glue_ctx = GlueContext(spark_ctx)
 
+# ------------------------------------------------------------------------------
 # resolve job parameters
+# ------------------------------------------------------------------------------
 args = getResolvedOptions(
     sys.argv,
     [
@@ -38,7 +44,6 @@ args = getResolvedOptions(
         "S3URI_TABLE",
         "DATABASE_NAME",
         "TABLE_NAME",
-        "WRITE_MODE",
     ]
 )
 job = Job(glue_ctx)
@@ -50,6 +55,9 @@ S3URI_TABLE = args["S3URI_TABLE"]
 DATABASE_NAME = args["DATABASE_NAME"]
 TABLE_NAME = args["TABLE_NAME"]
 
+# ------------------------------------------------------------------------------
+# create boto3 session
+# ------------------------------------------------------------------------------
 boto_ses = boto3.session.Session()
 sts_client = boto_ses.client("sts")
 aws_account_id = sts_client.get_caller_identity()["Account"]
@@ -58,7 +66,9 @@ aws_region = boto_ses.region_name
 print(f"aws_account_id = {aws_account_id}")
 print(f"aws_region = {aws_region}")
 
+# ------------------------------------------------------------------------------
 # parse input data from s3
+# ------------------------------------------------------------------------------
 s3_client = boto3.client("s3")
 parts = S3URI_INCREMENTAL_GLUE_JOB_INPUT.split("/", 3)
 bucket = parts[2]
@@ -69,7 +79,6 @@ response = s3_client.get_object(
 )
 input_data = json.loads(response["Body"].read().decode("utf-8"))
 s3uri_list = input_data["s3uri_list"]
-write_mode = input_data["write_mode"]
 
 pdf_incremental = glue_ctx.create_dynamic_frame.from_options(
     connection_type="s3",
@@ -88,9 +97,9 @@ def show_df(pdf, n: int = 3):
 # show_df(pdf_incremental)
 # pdf_incremental.count()
 
+# ------------------------------------------------------------------------------
 # generate create_year, create_month, ..., create_minute columns
-from pyspark.sql import functions as F
-
+# ------------------------------------------------------------------------------
 pdf_incremental_1 = pdf_incremental.withColumn(
     "id",
     F.concat(
@@ -118,8 +127,6 @@ pdf_incremental_1 = pdf_incremental.withColumn(
 # show_df(pdf_incremental_1)
 
 # add row_number column
-from pyspark.sql.window import Window
-
 pdf_incremental_2 = (
     pdf_incremental_1.withColumn(
         "row_number",
@@ -168,7 +175,7 @@ additional_options = {
 (
     pdf_incremental_3.write.format("hudi")
     .options(**additional_options)
-    .mode(write_mode)
+    .mode("append")
     .save()
 )
 

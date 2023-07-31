@@ -173,15 +173,21 @@ class CDCTracker:
         # start job run
         # Ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/glue/client/start_job_run.html
         print("start job run.")
-        res = bsm.glue_client.start_job_run(
-            JobName=self.glue_job_name,
-        )
-        job_run_id = res["JobRunId"]
-        print(f"job run id = {job_run_id}")
-        self.last_glue_job_run_id = job_run_id
-        self.ready_to_run_next_glue_job = False
-        self.write(bsm=bsm)
-        return True
+        try:
+            res = bsm.glue_client.start_job_run(
+                JobName=self.glue_job_name,
+            )
+            job_run_id = res["JobRunId"]
+            print(f"job run id = {job_run_id}")
+            self.last_glue_job_run_id = job_run_id
+            self.ready_to_run_next_glue_job = False
+            self.write(bsm=bsm)
+            return True
+        except Exception as e:
+            if "concurrent runs exceeded" in str(e).lower():
+                return False
+            else:
+                raise NotImplementedError
 
     def run_glue_job(self, bsm: BotoSesManager) -> bool:
         """
@@ -203,7 +209,7 @@ class CDCTracker:
                 JobName=self.glue_job_name,
                 RunId=self.last_glue_job_run_id,
             )
-            state = res["JobRunState"]
+            state = res["JobRun"]["JobRunState"]
 
             # if finished (succeeded or failed), update the tracker and run another job
             if state in [
