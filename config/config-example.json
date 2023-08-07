@@ -1,0 +1,17 @@
+{
+    "app_name": "rds_to_dl",
+    "aws_profile": "your_aws_profile",
+    "vpc_id": "vpc-1a2b3c",
+    "subnet_id_list": [
+        "subnet-1a2b3c",
+        "subnet-4d5e6f",
+        "subnet-7g8h9i"
+    ],
+    "authorized_ip_list": [
+        "151.200.238.3"
+    ],
+    "port": 5432,
+    "database": "postgres",
+    "username": "postgres",
+    "password": "H22iQ3wtuh^o"
+}

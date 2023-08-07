@@ -1,0 +1,2 @@
+# This requirements file should only include dependencies for dev
+jupyterlab

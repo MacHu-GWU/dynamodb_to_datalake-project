@@ -4,6 +4,7 @@ tmp/
 *.drawio.dtmp
 query_result.csv
 cdk.out
+config/config.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

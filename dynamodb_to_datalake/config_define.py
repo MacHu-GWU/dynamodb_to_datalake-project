@@ -17,20 +17,10 @@ class Config:
 
     :param app_name: app name, common prefix for all resources
     :param aws_profile: AWS cli profile for this project
-    :param dynamodb_table: dynamodb table name
-    :param glue_database: glue catalog database name
-    :param glue_table: glue catalog table name
-    :param lambda_role_name: AWS Lambda Function IAM role name (name only)
-    :param glue_role_name: AWS Glue Job IAM role name (name only)
     """
 
     app_name: str
     aws_profile: str
-    dynamodb_table: str
-    glue_database: str
-    glue_table: str
-    lambda_role_name: str
-    glue_role_name: str
 
     @cached_property
     def bsm(self) -> BotoSesManager:
@@ -45,8 +35,28 @@ class Config:
         return self.bsm.aws_region
 
     @property
+    def app_name_slug(self) -> str:
+        return self.app_name.replace("_", "-")
+
+    @property
+    def app_name_snake(self) -> str:
+        return self.app_name.replace("-", "_")
+
+    @property
+    def dynamodb_table(self) -> str:
+        return f"{self.app_name_snake}-transactions"
+
+    @property
     def dynamodb_table_arn(self) -> str:
         return f"arn:aws:dynamodb:{self.aws_region}:{self.aws_account_id}:table/{self.dynamodb_table}"
+
+    @property
+    def lambda_role_name(self) -> str:
+        return f"{self.app_name_snake}-lambda_role_name"
+
+    @property
+    def glue_role_name(self) -> str:
+        return f"{self.app_name_snake}-glue_role_name"
 
     @property
     def lambda_role_arn(self) -> str:
@@ -58,27 +68,37 @@ class Config:
 
     @property
     def cloudformation_stack_name(self) -> str:
-        return self.app_name.replace("_", "-")
+        return self.app_name_slug
+
+    @property
+    def glue_database(self) -> str:
+        return self.app_name_snake
+
+    @property
+    def glue_table(self) -> str:
+        return "transactions"
 
     @property
     def lambda_function_name_dynamodb_stream_consumer(self) -> str:
-        return f"{self.app_name}_dynamodb_stream_consumer"
+        return f"{self.app_name_snake}_dynamodb_stream_consumer"
 
     @property
-    def lambda_function_name_dynamodb_export_to_s3_post_process_coordinator(self) -> str:
-        return f"{self.app_name}_export_post_process_coordinator"
+    def lambda_function_name_dynamodb_export_to_s3_post_process_coordinator(
+        self,
+    ) -> str:
+        return f"{self.app_name_snake}_export_post_process_coordinator"
 
     @property
     def lambda_function_name_dynamodb_export_to_s3_post_process_worker(self) -> str:
-        return f"{self.app_name}_export_post_process_worker"
+        return f"{self.app_name_snake}_export_post_process_worker"
 
     @property
     def glue_job_name_initial_load(self) -> str:
-        return f"{self.app_name}_initial_load"
+        return f"{self.app_name_snake}_initial_load"
 
     @property
     def glue_job_name_incremental(self) -> str:
-        return f"{self.app_name}_incremental"
+        return f"{self.app_name_snake}_incremental"
 
     @property
     def s3_bucket_artifacts(self) -> str:

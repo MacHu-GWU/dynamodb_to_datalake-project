@@ -336,14 +336,61 @@ class Stack(cdk.Stack):
         )
 
 
-def app_synth():
-    app = cdk.App()
 
+@dataclasses.dataclass
+class ResourceActivationConfig:
+    declare_s3_bucket: bool = dataclasses.field(default=False)
+    declare_iam_role: bool = dataclasses.field(default=False)
+    declare_dynamodb_table: bool = dataclasses.field(default=False)
+    declare_glue_catalog: bool = dataclasses.field(default=False)
+    declare_glue_job: bool = dataclasses.field(default=False)
+    declare_lambda_function: bool = dataclasses.field(default=False)
+
+    @classmethod
+    def read(cls):
+        if paths.path_cdk_stack_resource_activation_config_json.exists():
+            return cls(
+                **json.loads(
+                    paths.path_cdk_stack_resource_activation_config_json.read_text()
+                )
+            )
+        else:
+            return cls()
+
+    def write(self):
+        paths.path_cdk_stack_resource_activation_config_json.write_text(
+            json.dumps(dataclasses.asdict(self), indent=4)
+        )
+
+
+def create_stack(app: cdk.App) -> Stack:
     stack = Stack(
         app,
         construct_id=f"DynamoDBtoDataLakeStack",
         stack_name=config.cloudformation_stack_name,
         config=config,
     )
+    return stack
+
+
+def app_synth():
+    resource_activation_config = ResourceActivationConfig.read()
+    pre_app_synth()
+
+    app = cdk.App()
+    stack = create_stack(app)
+
+    if resource_activation_config.declare_s3_bucket:
+        stack.declare_s3_bucket()
+    if resource_activation_config.declare_iam_role:
+        stack.declare_iam_role()
+    if resource_activation_config.declare_rds_database:
+        stack.declare_rds_database()
+    if resource_activation_config.declare_dms:
+        stack.declare_dms()
+    if resource_activation_config.declare_glue_catalog:
+        stack.declare_glue_catalog()
+    if resource_activation_config.declare_glue_job:
+        stack.declare_glue_job()
 
     app.synth()

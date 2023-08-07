@@ -2,6 +2,18 @@ Dynamodb to DataLake Project
 ==============================================================================
 
 
+    # use python3.10 because AWS Glue 4.0 uses python3.10
+    virtualenv -p python3.10 .venv
+
+    # activate the virtualenv
+    source .venv/bin/activate
+
+    pip install -r requirements.txt
+    pip install -r requirements-dev.txt
+    pip install -r requirements-test.txt
+
+
+
 Overview
 ------------------------------------------------------------------------------
 本项目是一个 Demo 项目, 展示了如何使用 `AWS Glue + Apache Hudi <https://docs.aws.amazon.com/glue/latest/dg/aws-glue-programming-etl-format-hudi.html>`_ 将数据从 `Amazon Dynamodb <https://aws.amazon.com/dynamodb/>`_ 以近实时 (时延小于 5 分钟) 的方式不断写入 `S3 DataLake <https://aws.amazon.com/big-data/datalakes-and-analytics/datalakes/>`_.
