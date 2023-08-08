@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 
+# standard library
 import sys
 import json
 
+# third party library
 import boto3
 
+# pyspark / AWS Glue stuff
 from pyspark import SparkConf
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
@@ -42,7 +45,7 @@ args = getResolvedOptions(
         "S3URI_TABLE",
         "DATABASE_NAME",
         "TABLE_NAME",
-    ]
+    ],
 )
 job = Job(glue_ctx)
 job.init(args["JOB_NAME"], args)
@@ -66,6 +69,10 @@ print(f"aws_region = {aws_region}")
 
 
 # ------------------------------------------------------------------------------
+# ETL Logics
+# ------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Read dynamodb export metadata
 # figure out the s3 location of the initial load data
 # ------------------------------------------------------------------------------
@@ -73,15 +80,14 @@ s3_client = boto_ses.client("s3")
 parts = S3URI_DYNAMODB_EXPORT_TRACKER.split("/", 3)
 bucket = parts[2]
 key = parts[3]
-res = s3_client.get_object(
-    Bucket=bucket,
-    Key=key
-)
+res = s3_client.get_object(Bucket=bucket, Key=key)
 export_arn = json.loads(res["Body"].read().decode("utf-8"))["export_arn"]
 export_id = export_arn.split("/")[-1]
 if S3URI_DYNAMODB_EXPORT_PROCESSED.endswith("/"):
     S3URI_DYNAMODB_EXPORT_PROCESSED = S3URI_DYNAMODB_EXPORT_PROCESSED[:-1]
-s3uri_dynamodb_export_processed = f"{S3URI_DYNAMODB_EXPORT_PROCESSED}/AWSDynamoDB/{export_id}/data/"
+s3uri_dynamodb_export_processed = (
+    f"{S3URI_DYNAMODB_EXPORT_PROCESSED}/AWSDynamoDB/{export_id}/data/"
+)
 
 # ------------------------------------------------------------------------------
 # read initial load data
@@ -103,37 +109,54 @@ pdf_initial.printSchema()
 def show_df(pdf, n: int = 3):
     pdf.show(n, vertical=True, truncate=False)
 
-# show_df(pdf_initial)
-# pdf_initial.count()
+
+def show_df_details(pdf, name: str):
+    print(name)
+    pdf.printSchema()
+    show_df(pdf)
+    print(f"{name}.count() = {pdf.count()}")
+
 
 # ------------------------------------------------------------------------------
+# transform data
 # generate create_year, create_month, ..., create_minute columns
 # ------------------------------------------------------------------------------
-pdf_initial = pdf_initial.withColumn(
-    "id",
-    F.concat(
-        F.lit("account:"),
-        pdf_initial.account,
-        F.lit(",create_at:"),
-        pdf_initial.create_at,
+pdf_initial = (
+    pdf_initial.withColumn(
+        "id",
+        F.concat(
+            F.lit("account:"),
+            pdf_initial.account,
+            F.lit(",create_at:"),
+            pdf_initial.create_at,
+        ),
     )
-).withColumn(
-    "create_year",
-    F.substring(pdf_initial.create_at, 1, 4),
-).withColumn(
-    "create_month",
-    F.substring(pdf_initial.create_at, 6, 2),
-).withColumn(
-    "create_day",
-    F.substring(pdf_initial.create_at, 9, 2),
-).withColumn(
-    "create_hour",
-    F.substring(pdf_initial.create_at, 12, 2),
-).withColumn(
-    "create_minute",
-    F.substring(pdf_initial.create_at, 15, 2),
+    .withColumn(
+        "create_year",
+        F.substring(pdf_initial.create_at, 1, 4),
+    )
+    .withColumn(
+        "create_month",
+        F.substring(pdf_initial.create_at, 6, 2),
+    )
+    .withColumn(
+        "create_day",
+        F.substring(pdf_initial.create_at, 9, 2),
+    )
+    .withColumn(
+        "create_hour",
+        F.substring(pdf_initial.create_at, 12, 2),
+    )
+    .withColumn(
+        "create_minute",
+        F.substring(pdf_initial.create_at, 15, 2),
+    )
 )
+# show_df_details(pdf_initial, "pdf_initial")
 
+# ------------------------------------------------------------------------------
+# write data
+# ------------------------------------------------------------------------------
 database = DATABASE_NAME
 table = TABLE_NAME
 

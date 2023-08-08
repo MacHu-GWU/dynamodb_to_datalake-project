@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 
+# standard library
 import sys
 import json
 
+# third party library
 import boto3
 
+# pyspark / AWS Glue stuff
 from pyspark import SparkConf
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
-from pyspark.context import SparkContext
 
 from awsglue.utils import getResolvedOptions
 from awsglue.context import GlueContext
@@ -44,7 +46,7 @@ args = getResolvedOptions(
         "S3URI_TABLE",
         "DATABASE_NAME",
         "TABLE_NAME",
-    ]
+    ],
 )
 job = Job(glue_ctx)
 job.init(args["JOB_NAME"], args)
@@ -66,6 +68,21 @@ aws_region = boto_ses.region_name
 print(f"aws_account_id = {aws_account_id}")
 print(f"aws_region = {aws_region}")
 
+
+# ------------------------------------------------------------------------------
+# ETL Logics
+# ------------------------------------------------------------------------------
+def show_df(pdf, n: int = 3):
+    pdf.show(n, vertical=True, truncate=False)
+
+
+def show_df_details(pdf, name: str):
+    print(name)
+    pdf.printSchema()
+    show_df(pdf)
+    print(f"{name}.count() = {pdf.count()}")
+
+
 # ------------------------------------------------------------------------------
 # parse input data from s3
 # ------------------------------------------------------------------------------
@@ -80,6 +97,9 @@ response = s3_client.get_object(
 input_data = json.loads(response["Body"].read().decode("utf-8"))
 s3uri_list = input_data["s3uri_list"]
 
+# ------------------------------------------------------------------------------
+# read data
+# ------------------------------------------------------------------------------
 pdf_incremental = glue_ctx.create_dynamic_frame.from_options(
     connection_type="s3",
     connection_options={
@@ -89,69 +109,63 @@ pdf_incremental = glue_ctx.create_dynamic_frame.from_options(
     format_options={"multiline": True},
 ).toDF()
 pdf_incremental.printSchema()
-
-
-def show_df(pdf, n: int = 3):
-    pdf.show(n, vertical=True, truncate=False)
-
-# show_df(pdf_incremental)
-# pdf_incremental.count()
+# show_df_details(pdf_incremental, "pdf_incremental")
 
 # ------------------------------------------------------------------------------
+# transform data
 # generate create_year, create_month, ..., create_minute columns
 # ------------------------------------------------------------------------------
-pdf_incremental_1 = pdf_incremental.withColumn(
-    "id",
-    F.concat(
-        F.lit("account:"),
-        pdf_incremental.account,
-        F.lit(",create_at:"),
-        pdf_incremental.create_at,
+pdf_incremental_1 = (
+    pdf_incremental.withColumn(
+        "id",
+        F.concat(
+            F.lit("account:"),
+            pdf_incremental.account,
+            F.lit(",create_at:"),
+            pdf_incremental.create_at,
+        ),
     )
-).withColumn(
-    "create_year",
-    F.substring(pdf_incremental.create_at, 1, 4),
-).withColumn(
-    "create_month",
-    F.substring(pdf_incremental.create_at, 6, 2),
-).withColumn(
-    "create_day",
-    F.substring(pdf_incremental.create_at, 9, 2),
-).withColumn(
-    "create_hour",
-    F.substring(pdf_incremental.create_at, 12, 2),
-).withColumn(
-    "create_minute",
-    F.substring(pdf_incremental.create_at, 15, 2),
+    .withColumn(
+        "create_year",
+        F.substring(pdf_incremental.create_at, 1, 4),
+    )
+    .withColumn(
+        "create_month",
+        F.substring(pdf_incremental.create_at, 6, 2),
+    )
+    .withColumn(
+        "create_day",
+        F.substring(pdf_incremental.create_at, 9, 2),
+    )
+    .withColumn(
+        "create_hour",
+        F.substring(pdf_incremental.create_at, 12, 2),
+    )
+    .withColumn(
+        "create_minute",
+        F.substring(pdf_incremental.create_at, 15, 2),
+    )
 )
-# show_df(pdf_incremental_1)
+# show_df_details(pdf_incremental_1, "pdf_incremental_1")
 
-# add row_number column
+# ------------------------------------------------------------------------------
+# only keep the latest version of each record
+# ------------------------------------------------------------------------------
 pdf_incremental_2 = (
     pdf_incremental_1.withColumn(
         "row_number",
         F.row_number().over(
             Window.partitionBy("id").orderBy(F.col("update_at").desc())
-        )
+        ),
     )
-)
-# show_df(pdf_incremental_2)
-
-# pdf_tmp = pdf_incremental_2.select(
-#     pdf_incremental_2.id,
-#     pdf_incremental_2.update_at,
-#     pdf_incremental_2.row_number,
-# ).sort(pdf_incremental_2.id.desc())
-# pdf_tmp.show(3, truncate=False)
-
-# generate the final dataframe
-pdf_incremental_3 = (
-    pdf_incremental_2
     .filter(F.col("row_number") == 1)
     .drop("row_number")
 )
-# show_df(pdf_incremental_3)
+# show_df_details(pdf_incremental_2, "pdf_incremental_2")
 
+# ------------------------------------------------------------------------------
+# write data
+# ------------------------------------------------------------------------------
 database = DATABASE_NAME
 table = TABLE_NAME
 
@@ -173,7 +187,7 @@ additional_options = {
     "path": S3URI_TABLE,
 }
 (
-    pdf_incremental_3.write.format("hudi")
+    pdf_incremental_2.write.format("hudi")
     .options(**additional_options)
     .mode("append")
     .save()
