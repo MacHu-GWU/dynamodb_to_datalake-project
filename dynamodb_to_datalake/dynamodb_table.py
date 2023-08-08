@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
+import datetime
+import typing as T
 
 import pynamodb_mate as pm
 
 from .config_init import config
 from .boto_ses import bsm
 
+
+DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%f%z"
 
 class Transaction(pm.Model):
     """
@@ -23,6 +27,21 @@ class Transaction(pm.Model):
     amount = pm.NumberAttribute()
     is_credit = pm.NumberAttribute()  # 0 or 1
     note = pm.UnicodeAttribute(null=True)
+
+    def hudify(self) -> T.Dict[str, T.Any]:
+        return {
+            "id": (
+                f"{Transaction.account.attr_name}:{self.account}"
+                f",{Transaction.create_at.attr_name}:{self.create_at.strftime(DATE_FORMAT)}"
+            ),
+            Transaction.account.attr_name: self.account,
+            Transaction.create_at.attr_name: self.create_at.strftime(DATE_FORMAT),
+            Transaction.update_at.attr_name: self.update_at.strftime(DATE_FORMAT),
+            Transaction.entity.attr_name: self.entity,
+            Transaction.amount.attr_name: self.amount,
+            Transaction.is_credit.attr_name: self.is_credit,
+            Transaction.note.attr_name: self.note,
+        }
 
 
 def get_dynamodb_table_console_url(

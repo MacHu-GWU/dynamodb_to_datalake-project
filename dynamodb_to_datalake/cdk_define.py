@@ -3,6 +3,9 @@
 # ------------------------------------------------------------------------------
 # Import dependencies
 # ------------------------------------------------------------------------------
+import json
+import dataclasses
+
 import aws_cdk as cdk
 import aws_cdk.aws_s3 as s3
 import aws_cdk.aws_s3_notifications as s3_notifications
@@ -21,6 +24,7 @@ from .config_init import config
 from .boto_ses import bsm
 from . import paths
 from . import s3paths
+from ._version import __version__
 from .s3_bucket import is_bucket_exists
 from .dynamodb_table import Transaction
 
@@ -35,37 +39,31 @@ class Stack(cdk.Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
         self.config = config
-        self.declare_s3_bucket()
-        self.declare_iam_role()
-        self.declare_dynamodb_table()
-        self.declare_glue_catalog()
-        self.declare_glue_job()
-        self.declare_lambda_function()
 
     def declare_s3_bucket(self):
         if is_bucket_exists(bsm.s3_client, config.s3_bucket_artifacts) is False:
             self.s3_bucket_artifacts = s3.Bucket(
                 self,
-                f"S3BucketArtifacts",
+                "S3BucketArtifacts",
                 bucket_name=config.s3_bucket_artifacts,
             )
         else:
             self.s3_bucket_artifacts = s3.Bucket.from_bucket_name(
                 self,
-                f"S3BucketArtifacts",
+                "S3BucketArtifacts",
                 bucket_name=config.s3_bucket_artifacts,
             )
 
         if is_bucket_exists(bsm.s3_client, config.s3_bucket_data) is False:
             self.s3_bucket_data = s3.Bucket(
                 self,
-                f"S3BucketData",
+                "S3BucketData",
                 bucket_name=config.s3_bucket_data,
             )
         else:
             self.s3_bucket_data = s3.Bucket.from_bucket_name(
                 self,
-                f"S3BucketData",
+                "S3BucketData",
                 bucket_name=config.s3_bucket_data,
             )
 
@@ -103,7 +101,7 @@ class Stack(cdk.Stack):
     def declare_dynamodb_table(self):
         self.dynamodb_table_transaction = dynamodb.Table(
             self,
-            "DynamodbTableTransaction",
+            "DynamodbTableTransactions",
             table_name=self.config.dynamodb_table,
             partition_key=dynamodb.Attribute(
                 name=Transaction.account.attr_name, type=dynamodb.AttributeType.STRING
@@ -122,7 +120,7 @@ class Stack(cdk.Stack):
         self.glue_database = glue.CfnDatabase(
             self,
             "GlueDatabase",
-            catalog_id=cdk.Aws.ACCOUNT_ID,
+            catalog_id=self.config.aws_account_id,
             database_input=glue.CfnDatabase.DatabaseInputProperty(
                 name=self.config.glue_database,
             ),
@@ -219,7 +217,7 @@ class Stack(cdk.Stack):
             path_setup_py_or_pyproject_toml=paths.dir_project_root,
             package_name=self.config.app_name,
             path_lambda_function=paths.path_lbd_func_dynamodb_stream_consumer,
-            version="0.1.1",
+            version=__version__,
             dir_build=paths.dir_build_lambda,
             s3dir_lambda=s3paths.s3dir_lambda_artifacts.joinpath(
                 "dynamodb_stream_consumer"
@@ -308,7 +306,7 @@ class Stack(cdk.Stack):
             path_setup_py_or_pyproject_toml=paths.dir_project_root,
             package_name=self.config.app_name,
             path_lambda_function=paths.path_lbd_func_dynamodb_export_to_s3_post_processor_worker,
-            version="0.1.1",
+            version=__version__,
             dir_build=paths.dir_build_lambda,
             s3dir_lambda=s3paths.s3dir_lambda_artifacts.joinpath(
                 "dynamodb_export_to_s3_post_processor_worker"
@@ -335,6 +333,17 @@ class Stack(cdk.Stack):
             },
         )
 
+
+def pre_app_synth():
+    s3paths.s3path_initial_load_glue_script.write_text(
+        paths.path_glue_script_initial_load.read_text(),
+        content_type="text/plain",
+    )
+
+    s3paths.s3path_incremental_glue_script.write_text(
+        paths.path_glue_script_incremental.read_text(),
+        content_type="text/plain",
+    )
 
 
 @dataclasses.dataclass
@@ -384,13 +393,13 @@ def app_synth():
         stack.declare_s3_bucket()
     if resource_activation_config.declare_iam_role:
         stack.declare_iam_role()
-    if resource_activation_config.declare_rds_database:
-        stack.declare_rds_database()
-    if resource_activation_config.declare_dms:
-        stack.declare_dms()
+    if resource_activation_config.declare_dynamodb_table:
+        stack.declare_dynamodb_table()
     if resource_activation_config.declare_glue_catalog:
         stack.declare_glue_catalog()
     if resource_activation_config.declare_glue_job:
         stack.declare_glue_job()
+    if resource_activation_config.declare_lambda_function:
+        stack.declare_lambda_function()
 
     app.synth()

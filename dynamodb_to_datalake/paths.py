@@ -26,7 +26,7 @@ dir_config = dir_project_root.joinpath("config")
 # project level config
 path_config_json = dir_config.joinpath("config.json")
 # cdk stack resources activation config, defines which resources to activate
-config = dir_config.joinpath("cdk_stack_resource_activation_config.json")
+path_cdk_stack_resource_activation_config_json = dir_config.joinpath("cdk_stack_resource_activation_config.json")
 
 # lambda function source code
 dir_lbd_funcs = dir_project_root.joinpath("lambda_functions")

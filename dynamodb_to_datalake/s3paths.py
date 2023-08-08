@@ -7,6 +7,7 @@ S3 file paths enumeration.
 from s3pathlib import S3Path
 
 from .config_init import config
+from . import paths
 
 
 # s3 folder to store deployment artifacts
@@ -17,6 +18,14 @@ s3dir_artifacts = S3Path(
 s3dir_lambda_artifacts = s3dir_artifacts.joinpath("lambda").to_dir()
 # s3 folder to store glue deployment artifacts
 s3dir_glue_artifacts = s3dir_artifacts.joinpath("glue").to_dir()
+# s3 path to initial load glue script
+s3path_initial_load_glue_script = s3dir_glue_artifacts.joinpath(
+    paths.path_glue_script_initial_load.basename
+)
+# s3 path to incremental data glue script
+s3path_incremental_glue_script = s3dir_glue_artifacts.joinpath(
+    paths.path_glue_script_incremental.basename
+)
 
 # s3 folder to store data
 s3dir_data = S3Path(

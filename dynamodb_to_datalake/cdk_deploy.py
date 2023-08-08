@@ -4,6 +4,7 @@ import subprocess
 
 from .config_init import config
 from .paths import dir_project_root
+from .cdk_define import ResourceActivationConfig
 
 
 def get_cloudformation_stack_console_url(
@@ -37,6 +38,26 @@ def cdk_deploy():
             config.aws_profile,
         ]
         subprocess.run(args, check=True)
+
+
+def cdk_deploy_1_iam_role():
+    resource_activation_config = ResourceActivationConfig()
+    resource_activation_config.declare_s3_bucket = True
+    resource_activation_config.declare_iam_role = True
+    resource_activation_config.write()
+    cdk_deploy()
+
+
+def cdk_deploy_2_everything():
+    resource_activation_config = ResourceActivationConfig()
+    resource_activation_config.declare_s3_bucket = True
+    resource_activation_config.declare_iam_role = True
+    resource_activation_config.declare_dynamodb_table = True
+    resource_activation_config.declare_glue_catalog = True
+    resource_activation_config.declare_glue_job = True
+    resource_activation_config.declare_lambda_function = True
+    resource_activation_config.write()
+    cdk_deploy()
 
 
 def cdk_destroy():

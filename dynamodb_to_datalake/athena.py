@@ -16,12 +16,15 @@ from .waiter import Waiter
 def run_athena_query(
     database: str,
     sql: str,
+    verbose: bool = True,
 ) -> pl.DataFrame:
     """
     Run athena query and get the result as a polars.DataFrame.
     """
-    print(f"run_athena_query:")
-    print(sql)
+    if verbose:
+        print(f"run_athena_query:")
+        print(sql)
+
     # ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/athena/client/start_query_execution.html
     response = bsm.athena_client.start_query_execution(
         QueryString=sql,
@@ -39,6 +42,7 @@ def run_athena_query(
     for _ in Waiter(
         delays=1,
         timeout=10,
+        verbose=verbose,
     ):
         response = bsm.athena_client.get_query_execution(
             QueryExecutionId=exec_id,
@@ -51,7 +55,8 @@ def run_athena_query(
         else:
             pass
 
-    print("")
+    if verbose:
+        print("")
 
     s3path_athena_result = s3dir_athena_result.joinpath(f"{exec_id}.csv")
     with s3path_athena_result.open("rb") as f:
@@ -61,21 +66,25 @@ def run_athena_query(
 
 def preview_hudi_table(
     limit: int = 10,
-):
+    verbose: bool = False,
+) -> pl.DataFrame:
     """
     Preview the Dynamodb equavilent Hudi table via Athena.
     """
     print(f"preview hudi table '{config.glue_database}.{config.glue_table}'")
     df = run_athena_query(
         database=config.glue_database,
-        sql=f"SELECT * FROM {config.glue_table} LIMIT {limit}",
-    )
-    df.write_csv(str(path_query_result), has_header=True)
-    print(f"preview data: file://{path_query_result}")
-
-    df = run_athena_query(
-        database=config.glue_database,
         sql=f"SELECT COUNT(*) as n_rows FROM {config.glue_table}",
+        verbose=verbose,
     )
     n_rows = df.to_dicts()[0]["n_rows"]
     print(f"n_rows = {n_rows}")
+
+    df = run_athena_query(
+        database=config.glue_database,
+        sql=f"SELECT * FROM {config.glue_table} LIMIT {limit}",
+        verbose=verbose,
+    )
+    df.write_csv(str(path_query_result), has_header=True)
+    print(f"preview data: file://{path_query_result}")
+    return df

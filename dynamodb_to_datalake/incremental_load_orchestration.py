@@ -30,6 +30,10 @@ class JobRunStateEnum(enum.Enum):
 
 
 PARTITION_DATETIME_FORMAT = "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+YYYY_MM_DD_HH_MM_FORMAT = "%Y-%m-%d %H:%M"
+# max_incremental_interval = 300  # seconds
+max_incremental_interval = 3600 * 24 * 365  # seconds
+max_incremental_files = 100  # n files
 
 
 @dataclasses.dataclass
@@ -156,29 +160,39 @@ class CDCTracker:
             PARTITION_DATETIME_FORMAT,
         )
 
-    @property
-    def s3path_glue_job_input(self) -> S3Path:
+    def get_glue_job_input_s3path(self, sequence_id) -> S3Path:
         """
-        Find the s3path of the glue job input file if we run a new glue job.
+        Find the s3path of the glue job input file where the glue job can
+        read the input data from.
 
-        If last glue job run sequence id is 3, then the file name will be
-        ``999999997-000000003.json``. This naming convention can return latest
-        glue job input parameter file first when we list the s3 directory.
+        If the glue job run sequence id is 3, then the file name will be
+        ``999999997-000000003.json``. This naming convention can return the
+        latest glue job input parameter file first when we list the s3 directory.
         """
         filename = (
-            f"{str(1000000000 - self.last_glue_job_run_sequence_id).zfill(9)}"
-            f"-{str(self.last_glue_job_run_sequence_id).zfill(9)}.json"
+            f"{str(1000000000 - sequence_id).zfill(9)}"
+            f"-{str(sequence_id).zfill(9)}.json"
         )
         return self.s3dir_glue_job_input.joinpath(filename)
 
-    def _run_glue_job(self, bsm: BotoSesManager):
-        # prepare the glue job parameters
+    @property
+    def last_glue_job_input_s3path(self) -> S3Path:
+        return self.get_glue_job_input_s3path(
+            sequence_id=self.last_glue_job_run_sequence_id,
+        )
+
+    @property
+    def next_glue_job_input_s3path(self) -> S3Path:
+        return self.get_glue_job_input_s3path(
+            sequence_id=self.last_glue_job_run_sequence_id + 1,
+        )
+
+    def run_glue_job(self, bsm: BotoSesManager):
         print("prepare the glue job parameters.")
         # let's say if the last processed partition is 2023-01-01-00-00
         # then we only process incremental files >= 2023-01-01-00-01
-        start_after_partition = (
-            self.last_processed_datetime + timedelta(minutes=1)
-        ).strftime(PARTITION_DATETIME_FORMAT)
+        start_after_datetime = self.last_processed_datetime + timedelta(minutes=1)
+        start_after_partition = start_after_datetime.strftime(PARTITION_DATETIME_FORMAT)
         start_after_key = (
             self.s3dir_dynamodb_stream.joinpath(start_after_partition).to_dir().key
         )
@@ -188,13 +202,15 @@ class CDCTracker:
         # because the data at 2023-01-01-00-09 may still on-the-fly
         # in this case, the next processed datatime should be 2023-01-01-00-08
         next_processed_datetime1 = datetime.utcnow() - timedelta(minutes=2)
-        next_processed_datetime2 = self.last_processed_datetime + timedelta(minutes=60)
+        next_processed_datetime2 = self.last_processed_datetime + timedelta(
+            seconds=max_incremental_interval
+        )
         next_processed_datetime = min(
             next_processed_datetime1, next_processed_datetime2
         )
-        end_before_partition = (
-            next_processed_datetime + timedelta(minutes=1)
-        ).strftime(PARTITION_DATETIME_FORMAT)
+        next_processed_partition = next_processed_datetime.strftime(PARTITION_DATETIME_FORMAT)
+        end_before_datetime = next_processed_datetime + timedelta(minutes=1)
+        end_before_partition = end_before_datetime.strftime(PARTITION_DATETIME_FORMAT)
         end_before_key = (
             self.s3dir_dynamodb_stream.joinpath(end_before_partition).to_dir().key
         )
@@ -206,13 +222,24 @@ class CDCTracker:
             if s3path.key < end_before_key:
                 s3uri_list.append(s3path.uri)
 
+        s3uri_list = s3uri_list[:max_incremental_files]
+
         if len(s3uri_list) == 0:
             print(
-                f"there is no new data between ({start_after_partition}, {end_before_partition}) to process, do nothing"
+                f"there is no new data between "
+                f"({start_after_datetime.strftime(YYYY_MM_DD_HH_MM_FORMAT)}, "
+                f"{end_before_datetime.strftime(YYYY_MM_DD_HH_MM_FORMAT)}) "
+                f"to process, do nothing"
             )
+            self.last_processed_partition = next_processed_partition
+            self.next_processed_partition = None
+            self.ready_to_run_next_glue_job = True
+            self.write(bsm=bsm)
             return False
 
-        self.s3path_glue_job_input.write_text(
+        s3path_glue_job_input = self.next_glue_job_input_s3path
+        print(f"write glue job input data to s3: {s3path_glue_job_input.uri}")
+        s3path_glue_job_input.write_text(
             json.dumps(
                 {
                     "start_after_partition": start_after_partition,
@@ -222,14 +249,13 @@ class CDCTracker:
                 indent=4,
             ),
             content_type="application/json",
+            bsm=bsm,
         )
-        self.next_processed_partition = next_processed_datetime.strftime(
-            PARTITION_DATETIME_FORMAT
-        )
+        self.next_processed_partition = next_processed_partition
 
-        # start job run
+        # start glue job run
         # Ref: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/glue/client/start_job_run.html
-        print("start job run.")
+        print("start glue job run.")
         try:
             res = bsm.glue_client.start_job_run(
                 JobName=self.glue_job_name,
@@ -243,22 +269,30 @@ class CDCTracker:
             self.last_glue_job_run_sequence_id += 1
             self.ready_to_run_next_glue_job = False
             self.write(bsm=bsm)
+            console_url = (
+                f"https://{bsm.aws_region}.console.aws.amazon.com/gluestudio"
+                f"/home?region={bsm.aws_region}#/editor/job/{self.glue_job_name}/script"
+            )
+            print(f"preview job run at: {console_url}")
             return True
         except Exception as e:
             if "concurrent runs exceeded" in str(e).lower():
                 return False
             else:
-                raise NotImplementedError
+                raise NotImplementedError(
+                    f"didn't implement the error handling logic for exception: {e!r}"
+                )
 
-    def run_glue_job(self, bsm: BotoSesManager) -> bool:
+    def try_to_run_glue_job(self, bsm: BotoSesManager) -> bool:
         """
-        Try to run glue job.
+        Check the status of the last glue job run, if it is finished, then
+        update the tracker and run a new glue job.
 
         :return: a boolean flag to indicate if it runs the glue job,
         """
-        print("try to run incremental glue job.")
+        print(f"try to run incremental glue job {self.glue_job_name!r}")
         if self.ready_to_run_next_glue_job:
-            return self._run_glue_job(bsm=bsm)
+            return self.run_glue_job(bsm=bsm)
         else:
             if self.last_glue_job_run_id is None:
                 raise ValueError
@@ -287,7 +321,7 @@ class CDCTracker:
                     f"previous glue job finished, "
                     f"status = {state!r}, run another one."
                 )
-                return self._run_glue_job(bsm=bsm)
+                return self.run_glue_job(bsm=bsm)
             else:
                 print(
                     f"there is a running incremental glue job, "

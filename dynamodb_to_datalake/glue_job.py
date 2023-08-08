@@ -156,7 +156,12 @@ def create_incremental_glue_job():
 
 
 def run_initial_load_glue_job():
-    print("run initial load glue job")
+    print(f"run initial load glue job {config.glue_job_name_initial_load!r}")
+    console_url = get_glue_job_console_url(
+        aws_region=config.aws_region,
+        job_name=config.glue_job_name_initial_load,
+    )
+    print(f"preview the job run status at: {console_url}")
     bsm.glue_client.start_job_run(
         JobName=config.glue_job_name_initial_load,
     )
@@ -171,4 +176,4 @@ def run_incremental_glue_job(epoch_processed_partition: str):
         glue_job_name=config.glue_job_name_incremental,
         epoch_processed_partition=epoch_processed_partition,
     )
-    tracker.run_glue_job(bsm=bsm)
+    tracker.try_to_run_glue_job(bsm=bsm)
