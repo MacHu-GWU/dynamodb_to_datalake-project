@@ -1,8 +1,0 @@
-{
-    "declare_s3_bucket": true,
-    "declare_iam_role": true,
-    "declare_dynamodb_table": true,
-    "declare_glue_catalog": true,
-    "declare_glue_job": true,
-    "declare_lambda_function": true
-}

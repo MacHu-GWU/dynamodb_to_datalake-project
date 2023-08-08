@@ -5,6 +5,7 @@ tmp/
 query_result.csv
 cdk.out
 config/config.json
+config/cdk_stack_resource_activation_config.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
